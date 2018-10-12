@@ -103,5 +103,9 @@ venv.bak/
 # mypy
 .mypy_cache/
 
-# data directory
+# project data directory
 data/
+tmp/
+
+# idea related file
+.idea/
