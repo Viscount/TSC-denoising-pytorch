@@ -9,17 +9,28 @@ import pickle
 
 import model.skip_gram as skip_gram
 
+import os
+os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 
-if __name__ == "__main__":
+
+def preprocess(output_file):
     # load data from csv
     seasons = pd.read_csv("./data/bangumi.csv", delimiter=",", encoding="utf-8")
     episodes = pd.read_csv("./data/episode.csv", delimiter=",", encoding="utf-8")
     danmaku_complete = pd.read_csv("./data/danmaku_complete.csv", delimiter="\t", encoding="utf-8",
                                    quoting=csv.QUOTE_NONE, low_memory=False)
     danmaku_complete = danmaku_complete.fillna(-1)
+    dm_set = skip_gram.build_dataset(danmaku_complete)
+    pickle.dump(dm_set, open(output_file, 'wb'))
+
+
+if __name__ == "__main__":
+    dataset_file = './tmp/dataset.pkl'
+    #preprocess(dataset_file)
 
     # build dataset
-    dm_set = skip_gram.build_dataset(danmaku_complete)
+    dataset = pickle.load(open(dataset_file, 'rb'))
+    print(type(dataset))
 
     # train
-    skip_gram.train(dm_set)
+    skip_gram.train(dataset)

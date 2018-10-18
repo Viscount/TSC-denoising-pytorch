@@ -51,7 +51,7 @@ class SkipGramLanguageModeler(nn.Module):
         with open(path, 'wb') as f:
             for word in word_to_ix:
                 ix = word_to_ix[word]
-                embed_dict[word] = embeds[ix].numpy()
+                embed_dict[word] = embeds[ix].cpu().numpy()
             pickle.dump(embed_dict, f)
         return
 
@@ -212,12 +212,13 @@ def train(dm_set):
 
             optimizer.zero_grad()
             loss = model(pos_u, pos_v, neg_v, batch_size)
-            print('epoch: %d batch %d : loss: %4.4f' % (epoch, batch_idx, loss.data[0]))
-
+            if (batch_idx + 1) % 500 == 0:
+                print('epoch: %d batch %d : loss: %4.4f' % (epoch, batch_idx + 1, loss.item()))
             loss.backward()
-
             optimizer.step()
+
+        print('Save model at epoch', epoch)
+        torch.save(model.state_dict(), 'tmp/model.ckpt')
 
     dm_set.save_vocab('tmp/skip_gram_vocab.csv')
     model.save_emb('tmp/skip_gram_embeds.p', dm_set.word_to_ix)
-    return
