@@ -1,15 +1,13 @@
 from util.word_segment import word_segment
 import torch
 from torch import nn
+import torch.nn.functional as f
 from torch.autograd import Variable
 import torch.optim as optim
 import pickle
 import torch.utils.data as data
-import math
 import numpy as np
 import pandas as pd
-import random
-import collections
 
 
 class TSCEmbedLanguageModeler(nn.Module):
@@ -22,25 +20,27 @@ class TSCEmbedLanguageModeler(nn.Module):
         self.init_emb()
 
     def init_emb(self):
-        initrange = 0.5 / self.embedding_dim
+        initrange = 1 / self.embedding_dim
         self.u_embeddings.weight.data.uniform_(-initrange, initrange)
-        self.v_embeddings.weight.data.uniform_(-0, 0)
+        self.v_embeddings.weight.data.uniform_(-initrange, initrange)
 
     def forward(self, u_pos, v_pos, v_neg, batch_size):
         embed_u = self.u_embeddings(u_pos)
         embed_v = self.v_embeddings(v_pos)
 
-        pdist = nn.PairwiseDistance(p=2, eps=1e-06)
-        sim_pos = pdist(embed_u, embed_v)
-        score_pos = torch.exp(sim_pos)
+        # sim_pos = f.cosine_similarity(embed_u, embed_v, dim=1)
+        # score_pos = torch.exp(sim_pos)
 
         neg_embed_v = self.v_embeddings(v_neg)
-        neg_pos = pdist(embed_u, neg_embed_v)
-        score_neg = torch.exp(neg_pos)
+        # neg_pos = f.cosine_similarity(embed_u, neg_embed_v, dim=1)
+        # score_neg = torch.exp(neg_pos)
 
-        loss = torch.log(score_pos / (score_pos + score_neg))
+        # loss = -torch.log(score_pos / (score_pos + score_neg))
 
-        return -1 * loss.sum() / batch_size
+        triplet_loss = nn.TripletMarginLoss(margin=1.0, p=2)
+        loss = triplet_loss(embed_u, embed_v, neg_embed_v)
+
+        return loss.sum() / batch_size
 
     def save_emb(self, path, rawid_to_ix):
         embeds = self.u_embeddings.weight.data.cpu()
@@ -129,7 +129,7 @@ class DmDataset(data.Dataset):
 
 
 def build_dataset(danmaku_complete):
-    danmaku_selected = danmaku_complete[danmaku_complete['season_id'] == '24588']
+    danmaku_selected = danmaku_complete[danmaku_complete['season_id'] == '24581']
     grouped = danmaku_selected.groupby('episode_id')
 
     context_size = 2.5
@@ -174,8 +174,8 @@ def train(dm_set):
     model = TSCEmbedLanguageModeler(dm_set.dm_size, EMBEDDING_DIM)
     print(model)
     if torch.cuda.is_available():
-        model.cuda()
-    optimizer = optim.SGD(model.parameters(), lr=0.3)
+        model = model.cuda()
+    optimizer = optim.SGD(model.parameters(), lr=0.001)
 
     for epoch in range(epoch_num):
         for batch_idx, sample in enumerate(dm_dataloader):
@@ -190,7 +190,8 @@ def train(dm_set):
 
             optimizer.zero_grad()
             loss = model(pos_u, pos_v, neg_v, batch_size)
-            print('epoch: %d batch %d : loss: %4.4f' % (epoch, batch_idx, loss.data[0]))
+            if batch_idx % 1000 == 0:
+                print('epoch: %d batch %d : loss: %4.4f' % (epoch, batch_idx, loss.item()))
 
             loss.backward()
 
