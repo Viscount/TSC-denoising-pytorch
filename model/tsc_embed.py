@@ -14,41 +14,51 @@ class TSCEmbedLanguageModeler(nn.Module):
 
     def __init__(self, tsc_size, embedding_dim):
         super(TSCEmbedLanguageModeler, self).__init__()
-        self.u_embeddings = nn.Embedding(tsc_size, embedding_dim, sparse=True)
-        self.v_embeddings = nn.Embedding(tsc_size, embedding_dim, sparse=True)
+        self.u_embeddings = nn.Embedding(tsc_size, 2000, sparse=True)
+        self.fc1 = nn.Linear(2000, 512)
+        self.fc2 = nn.Linear(512, 256)
+        self.out = nn.Linear(256, embedding_dim)
         self.embedding_dim = embedding_dim
         self.init_emb()
 
     def init_emb(self):
-        initrange = 1 / self.embedding_dim
+        initrange = 1000 / self.embedding_dim
         self.u_embeddings.weight.data.uniform_(-initrange, initrange)
-        self.v_embeddings.weight.data.uniform_(-initrange, initrange)
+        # self.v_embeddings.weight.data.uniform_(-initrange, initrange)
+
+    def embed(self, u):
+        raw_embed = self.u_embeddings(u)
+        out1 = f.relu(self.fc1(raw_embed))
+        out1 = f.dropout(out1, p=0.5)
+        out2 = f.relu(self.fc2(out1))
+        out2 = f.dropout(out2, p=0.5)
+        out = f.relu(self.out(out2))
+        return out
 
     def forward(self, u_pos, v_pos, v_neg, batch_size):
-        embed_u = self.u_embeddings(u_pos)
-        embed_v = self.v_embeddings(v_pos)
+        embed_u = self.embed(u_pos)
+        embed_v = self.embed(v_pos)
 
-        # sim_pos = f.cosine_similarity(embed_u, embed_v, dim=1)
-        # score_pos = torch.exp(sim_pos)
+        sim_pos = f.cosine_similarity(embed_u, embed_v, dim=1)
+        score_pos = torch.exp(sim_pos)
 
-        neg_embed_v = self.v_embeddings(v_neg)
-        # neg_pos = f.cosine_similarity(embed_u, neg_embed_v, dim=1)
-        # score_neg = torch.exp(neg_pos)
+        neg_embed_v = self.embed(v_neg)
+        neg_pos = f.cosine_similarity(embed_u, neg_embed_v, dim=1)
+        score_neg = torch.exp(neg_pos)
 
-        # loss = -torch.log(score_pos / (score_pos + score_neg))
+        loss = -(score_pos / (score_pos + score_neg))
 
-        triplet_loss = nn.TripletMarginLoss(margin=1.0, p=2)
-        loss = triplet_loss(embed_u, embed_v, neg_embed_v)
+        # triplet_loss = nn.TripletMarginLoss(margin=1.0, p=2)
+        # loss = triplet_loss(embed_u, embed_v, neg_embed_v)
 
         return loss.sum() / batch_size
 
     def save_emb(self, path, rawid_to_ix):
-        embeds = self.u_embeddings.weight.data.cpu()
         embed_dict = dict()
         with open(path, 'wb') as f:
             for raw_id in rawid_to_ix:
-                ix = rawid_to_ix[raw_id]
-                embed_dict[raw_id] = embeds[ix].numpy()
+                ix = Variable(torch.LongTensor(rawid_to_ix[raw_id]))
+                embed_dict[raw_id] = self.embed(ix).cpu().numpy()
             pickle.dump(embed_dict, f)
         return
 
@@ -174,8 +184,11 @@ def train(dm_set):
     model = TSCEmbedLanguageModeler(dm_set.dm_size, EMBEDDING_DIM)
     print(model)
     if torch.cuda.is_available():
+        print("CUDA : On")
         model = model.cuda()
-    optimizer = optim.SGD(model.parameters(), lr=0.001)
+    else:
+        print("CUDA : Off")
+    optimizer = optim.SGD(model.parameters(), lr=0.05, momentum=0.9)
 
     for epoch in range(epoch_num):
         for batch_idx, sample in enumerate(dm_dataloader):
@@ -190,8 +203,8 @@ def train(dm_set):
 
             optimizer.zero_grad()
             loss = model(pos_u, pos_v, neg_v, batch_size)
-            if batch_idx % 1000 == 0:
-                print('epoch: %d batch %d : loss: %4.4f' % (epoch, batch_idx, loss.item()))
+            if batch_idx % 100 == 0:
+                print('epoch: %d batch %d : loss: %4.6f' % (epoch, batch_idx, loss.item()))
 
             loss.backward()
 

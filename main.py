@@ -11,7 +11,7 @@ import model.skip_gram as skip_gram
 import model.tsc_embed as tsc_embed
 
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 
 def preprocess(output_file):

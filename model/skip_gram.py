@@ -196,7 +196,10 @@ def train(dm_set):
     model = SkipGramLanguageModeler(dm_set.vocab_size(), EMBEDDING_DIM)
     print(model)
     if torch.cuda.is_available():
+        print("CUDA : On")
         model.cuda()
+    else:
+        print("CUDA : Off")
     optimizer = optim.SGD(model.parameters(), lr=0.3)
 
     for epoch in range(epoch_num):
@@ -213,7 +216,7 @@ def train(dm_set):
             optimizer.zero_grad()
             loss = model(pos_u, pos_v, neg_v, batch_size)
             if (batch_idx + 1) % 500 == 0:
-                print('epoch: %d batch %d : loss: %4.4f' % (epoch, batch_idx + 1, loss.item()))
+                print('epoch: %d batch %d : loss: %4.6f' % (epoch, batch_idx + 1, loss.item()))
             loss.backward()
             optimizer.step()
 
