@@ -22,7 +22,7 @@ class TSCEmbedLanguageModeler(nn.Module):
         self.init_emb()
 
     def init_emb(self):
-        initrange = 1000 / self.embedding_dim
+        initrange = 100 / self.embedding_dim
         self.u_embeddings.weight.data.uniform_(-initrange, initrange)
         # self.v_embeddings.weight.data.uniform_(-initrange, initrange)
 
@@ -57,8 +57,10 @@ class TSCEmbedLanguageModeler(nn.Module):
         embed_dict = dict()
         with open(path, 'wb') as f:
             for raw_id in rawid_to_ix:
-                ix = Variable(torch.LongTensor(rawid_to_ix[raw_id]))
-                embed_dict[raw_id] = self.embed(ix).cpu().numpy()
+                ix = Variable(torch.LongTensor([rawid_to_ix[raw_id]]))
+                if torch.cuda.is_available():
+                    ix = ix.cuda()
+                embed_dict[raw_id] = self.embed(ix).cpu().detach().numpy()
             pickle.dump(embed_dict, f)
         return
 
@@ -188,7 +190,7 @@ def train(dm_set):
         model = model.cuda()
     else:
         print("CUDA : Off")
-    optimizer = optim.SGD(model.parameters(), lr=0.05, momentum=0.9)
+    optimizer = optim.SGD(model.parameters(), lr=0.1, momentum=0.9)
 
     for epoch in range(epoch_num):
         for batch_idx, sample in enumerate(dm_dataloader):
