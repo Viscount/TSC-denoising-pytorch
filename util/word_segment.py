@@ -2,20 +2,32 @@ import jieba.posseg as segtool
 import re
 
 ACCEPTABLE_TYPE = {'n', 't', 's', 'f', 'v', 'a', 'b', 'z', 'e', 'y', 'o'}
+REJECT_TYPE = {'u', 'x'}
 REPLACE_DICT = {
     "233+": "233",
     "666+": "666",
     "emm+": "emm",
     "hhh+": "hhh",
-    "www+": "www"
+    "www+": "www",
+    "哈哈哈+": "哈哈哈",
+    "。。。+": "。。。",
+    "???+": "???"
 }
 
 
-def check_type(word_type):
-    if word_type[0] in ACCEPTABLE_TYPE:
-        return True
+def check_type(word_type, mode):
+    if mode == 'ACPT':
+        if word_type[0] in ACCEPTABLE_TYPE:
+            return True
+        else:
+            return False
+    elif mode == 'REJT':
+        if word_type[0] in REJECT_TYPE:
+            return False
+        else:
+            return True
     else:
-        return False
+        return True
 
 
 def check_replace(word):
@@ -32,6 +44,6 @@ def word_segment(content):
     results = segtool.cut(content)
     for result in results:
         result.word = check_replace(result.word)
-        if check_type(result.flag):
+        if check_type(result.flag, "REJT"):
             words.append(result.word)
     return words
