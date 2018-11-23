@@ -1,3 +1,6 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
 from util.word_segment import word_segment
 import torch
 from torch import nn
@@ -7,7 +10,6 @@ import torch.optim as optim
 import pickle
 import torch.utils.data as data
 import numpy as np
-import pandas as pd
 
 
 class TSCEmbedLanguageModeler(nn.Module):
@@ -28,11 +30,11 @@ class TSCEmbedLanguageModeler(nn.Module):
 
     def embed(self, u):
         raw_embed = self.u_embeddings(u)
-        out1 = f.relu(self.fc1(raw_embed))
+        out1 = f.tanh(self.fc1(raw_embed))
         out1 = f.dropout(out1, p=0.5)
-        out2 = f.relu(self.fc2(out1))
+        out2 = f.tanh(self.fc2(out1))
         out2 = f.dropout(out2, p=0.5)
-        out = f.relu(self.out(out2))
+        out = f.tanh(self.out(out2))
         return out
 
     def forward(self, u_pos, v_pos, v_neg, batch_size):
@@ -60,7 +62,8 @@ class TSCEmbedLanguageModeler(nn.Module):
                 ix = Variable(torch.LongTensor([rawid_to_ix[raw_id]]))
                 if torch.cuda.is_available():
                     ix = ix.cuda()
-                embed_dict[raw_id] = self.embed(ix).cpu().detach().numpy()
+                embed = self.embed(ix).cpu().detach().numpy()
+                embed_dict[raw_id] = np.squeeze(embed)
             pickle.dump(embed_dict, f)
         return
 
@@ -173,7 +176,7 @@ def train(dm_set):
 
     EMBEDDING_DIM = 200
     batch_size = 128
-    epoch_num = 20
+    epoch_num = 10
 
     dm_dataloader = data.DataLoader(
         dataset=dm_set,
@@ -190,7 +193,7 @@ def train(dm_set):
         model = model.cuda()
     else:
         print("CUDA : Off")
-    optimizer = optim.SGD(model.parameters(), lr=0.1, momentum=0.9)
+    optimizer = optim.SGD(model.parameters(), lr=1e-4, momentum=0.9)
 
     for epoch in range(epoch_num):
         for batch_idx, sample in enumerate(dm_dataloader):

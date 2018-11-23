@@ -1,3 +1,6 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
 import jieba.posseg as segtool
 import re
 
@@ -8,10 +11,7 @@ REPLACE_DICT = {
     "666+": "666",
     "emm+": "emm",
     "hhh+": "hhh",
-    "www+": "www",
-    "哈哈哈+": "哈哈哈",
-    "。。。+": "。。。",
-    "???+": "???"
+    "www+": "www"
 }
 
 

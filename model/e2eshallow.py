@@ -1,3 +1,6 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
 import torch
 from torch import nn
 import torch.nn.functional as F
@@ -17,13 +20,13 @@ class EmbeddingE2EModeler(nn.Module):
 
     def __init__(self, vocab_size, embedding_dim):
         super(EmbeddingE2EModeler, self).__init__()
-        self.embedding = nn.Embedding(vocab_size, embedding_dim, sparse=True)
+        self.embedding = nn.Embedding(vocab_size, embedding_dim)
         self.fc1 = nn.Linear(embedding_dim, 256, bias=True)
         self.fc2 = nn.Linear(256, 128, bias=True)
         self.fc3 = nn.Linear(128, 2, bias=True)
 
     def init_emb(self):
-        initrange = 100 / self.embedding_dim
+        initrange = 0.5 / self.embedding_dim
         self.u_embeddings.weight.data.uniform_(-initrange, initrange)
 
     def forward(self, sentence):
@@ -34,7 +37,7 @@ class EmbeddingE2EModeler(nn.Module):
         h1 = F.dropout(h1, p=0.5)
         h2 = F.relu(self.fc2(h1))
         h2 = F.dropout(h2, p=0.5)
-        h3 = F.relu(self.fc3(h2))
+        h3 = F.sigmoid(self.fc3(h2))
         out = F.softmax(h3, dim=1)
         return out
 
@@ -50,29 +53,32 @@ class EmbeddingE2EModeler(nn.Module):
 
 
 class DmDataset(data.Dataset):
-    def __init__(self, dm_samples, min_count, max_len):
+    def __init__(self, dm_samples, min_count, max_len, dictionary=None):
         self.max_len = max_len
-        print('building vocabulary...')
-        aggregate_sample = []
-        for sample in dm_samples:
-            aggregate_sample.extend(sample['words'])
-        counter = {'UNK': 0}
-        counter.update(collections.Counter(aggregate_sample).most_common())
-        rare_words = set()
-        for word in counter:
-            if word != 'UNK' and counter[word] <= min_count:
-                rare_words.add(word)
-        for word in rare_words:
-            counter['UNK'] += counter[word]
-            counter.pop(word)
-        print('%d words founded in vocabulary' % len(counter))
+        if dictionary is not None:
+            self.word_to_ix = dictionary
+        else:
+            print('building vocabulary...')
+            aggregate_sample = []
+            for sample in dm_samples:
+                aggregate_sample.extend(sample['words'])
+            counter = {'UNK': 0}
+            counter.update(collections.Counter(aggregate_sample).most_common())
+            rare_words = set()
+            for word in counter:
+                if word != 'UNK' and counter[word] <= min_count:
+                    rare_words.add(word)
+            for word in rare_words:
+                counter['UNK'] += counter[word]
+                counter.pop(word)
+            print('%d words founded in vocabulary' % len(counter))
 
-        self.vocab_counter = counter
-        self.word_to_ix = {
-            'EPT': 0
-        }
-        for word in counter:
-            self.word_to_ix[word] = len(self.word_to_ix)
+            self.vocab_counter = counter
+            self.word_to_ix = {
+                'EPT': 0
+            }
+            for word in counter:
+                self.word_to_ix[word] = len(self.word_to_ix)
 
         print('building samples...')
         self.samples = []
@@ -150,7 +156,7 @@ def build_dataset(danmaku_complete):
 
     train_samples, test_samples = train_test_split(samples, test_size=0.25, shuffle=True)
     dm_train_set = DmDataset(train_samples, min_count, max_len)
-    dm_test_set = DmDataset(test_samples, min_count, max_len)
+    dm_test_set = DmDataset(test_samples, min_count, max_len, dictionary=dm_train_set.word_to_ix)
     return dm_train_set, dm_test_set
 
 
@@ -159,7 +165,7 @@ def train(dm_train_set, dm_test_set):
 
     EMBEDDING_DIM = 200
     batch_size = 128
-    epoch_num = 20
+    epoch_num = 6
 
     dm_dataloader = data.DataLoader(
         dataset=dm_train_set,
@@ -184,7 +190,7 @@ def train(dm_train_set, dm_test_set):
         model.cuda()
     else:
         print("CUDA : Off")
-    optimizer = optim.SGD(model.parameters(), lr=1e-4, momentum=0.9)
+    optimizer = optim.Adam(model.parameters(), lr=1e-6, betas=(0.9, 0.99))
 
     for epoch in range(epoch_num):
         for batch_idx, (sentence, label) in enumerate(dm_dataloader):
@@ -209,6 +215,6 @@ def train(dm_train_set, dm_test_set):
             if torch.cuda.is_available():
                 sentence = sentence.cuda()
             pred = model.forward(sentence)
-            pred_array.extend(pred.argmax(dim=1).numpy())
+            pred_array.extend(pred.argmax(dim=1).cpu().numpy())
             label_array.extend(label.numpy())
         print(classification_report(label_array, pred_array))
