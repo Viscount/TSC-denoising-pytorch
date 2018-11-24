@@ -20,19 +20,20 @@ class EmbeddingE2EModeler(nn.Module):
 
     def __init__(self, vocab_size, embedding_dim):
         super(EmbeddingE2EModeler, self).__init__()
-        self.embedding = nn.Embedding(vocab_size, embedding_dim)
+        self.embedding = nn.Embedding(vocab_size, embedding_dim, padding_idx=0)
         self.fc1 = nn.Linear(embedding_dim, 256, bias=True)
         self.fc2 = nn.Linear(256, 128, bias=True)
         self.fc3 = nn.Linear(128, 2, bias=True)
+        self.embedding_dim = embedding_dim
 
-    def init_emb(self):
-        initrange = 0.5 / self.embedding_dim
-        self.u_embeddings.weight.data.uniform_(-initrange, initrange)
+    def init_emb(self, pre_train_weight):
+        if pre_train_weight.shape == self.embedding.weight.data.shape:
+            self.embedding.weight.data = pre_train_weight
+        return
 
     def forward(self, sentence):
         sent_emd = self.embedding(sentence)
-        size = sent_emd.shape[1]
-        sent_emd = torch.sum(sent_emd, dim=1) / size
+        sent_emd = torch.sum(sent_emd, dim=1)
         h1 = F.relu(self.fc1(sent_emd))
         h1 = F.dropout(h1, p=0.5)
         h2 = F.relu(self.fc2(h1))
@@ -40,16 +41,6 @@ class EmbeddingE2EModeler(nn.Module):
         h3 = F.sigmoid(self.fc3(h2))
         out = F.softmax(h3, dim=1)
         return out
-
-    def save_emb(self, path, word_to_ix):
-        embeds = self.u_embeddings.weight.data
-        embed_dict = dict()
-        with open(path, 'wb') as f:
-            for word in word_to_ix:
-                ix = word_to_ix[word]
-                embed_dict[word] = embeds[ix].cpu().numpy()
-            pickle.dump(embed_dict, f)
-        return
 
 
 class DmDataset(data.Dataset):
@@ -165,7 +156,7 @@ def train(dm_train_set, dm_test_set):
 
     EMBEDDING_DIM = 200
     batch_size = 128
-    epoch_num = 6
+    epoch_num = 50
 
     dm_dataloader = data.DataLoader(
         dataset=dm_train_set,

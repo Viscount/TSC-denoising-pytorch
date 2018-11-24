@@ -1,0 +1,367 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+import torch
+from torch import nn
+import torch.nn.functional as F
+import pickle
+import torch.utils.data as data
+from torch.autograd import Variable
+import torch.optim as optim
+import numpy as np
+import pandas as pd
+import collections
+from util.word_segment import word_segment
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import classification_report
+
+
+class EmbeddingE2EModeler(nn.Module):
+
+    def __init__(self, vocab_size, embedding_dim):
+        super(EmbeddingE2EModeler, self).__init__()
+        self.embedding = nn.Embedding(vocab_size, embedding_dim, padding_idx=0)
+        self.fc1 = nn.Linear(embedding_dim, 256, bias=True)
+        self.fc2 = nn.Linear(256, 128, bias=True)
+        self.fc3 = nn.Linear(128, 2, bias=True)
+
+    def init_emb(self):
+        initrange = 0.5 / self.embedding_dim
+        self.u_embeddings.weight.data.uniform_(-initrange, initrange)
+
+    def embed(self, sentence):
+        sent_emd = self.embedding(sentence)
+        sent_emd = torch.sum(sent_emd, dim=1)
+        return sent_emd
+
+    def forward(self, sentence):
+        sent_emd = self.embed(sentence)
+        h1 = F.relu(self.fc1(sent_emd))
+        h1 = F.dropout(h1, p=0.5)
+        h2 = F.relu(self.fc2(h1))
+        h2 = F.dropout(h2, p=0.5)
+        h3 = F.sigmoid(self.fc3(h2))
+        out = F.softmax(h3, dim=1)
+        return out
+
+
+class DmTrainDataset(data.Dataset):
+    def __init__(self, dm_samples, min_count, max_len, context_size, min_common_words, dictionary=None):
+        self.max_len = max_len
+        self.min_count = min_count
+        self.min_common_words = min_common_words
+        all_sentences = []
+        if dictionary is not None:
+            self.word_to_ix = dictionary
+        else:
+            print('building vocabulary...')
+            aggregate_samples = []
+            for episode_lvl_samples in dm_samples:
+                for sample in episode_lvl_samples:
+                    all_sentences.append(sample)
+                    aggregate_samples.extend(sample['content'])
+            counter = {'UNK': 0}
+            counter.update(collections.Counter(aggregate_samples).most_common())
+            rare_words = set()
+            for word in counter:
+                if word != 'UNK' and counter[word] <= min_count:
+                    rare_words.add(word)
+            for word in rare_words:
+                counter['UNK'] += counter[word]
+                counter.pop(word)
+            print('%d words founded in vocabulary' % len(counter))
+
+            self.vocab_counter = counter
+            self.word_to_ix = {
+                'EPT': 0
+            }
+            for word in counter:
+                self.word_to_ix[word] = len(self.word_to_ix)
+
+        print('building samples...')
+        self.samples = []
+        self.labels = []
+        self.all_sentences = []
+        for episode_lvl_samples in dm_samples:
+            context_start_index = 0
+            for sample in episode_lvl_samples:
+
+                playback_time = sample['playback_time']
+                content = sample['content']
+
+                # update context_start_index
+                start_sample = episode_lvl_samples[context_start_index]
+                while start_sample['playback_time'] < playback_time - context_size:
+                    context_start_index += 1
+                    start_sample = episode_lvl_samples[context_start_index]
+                # build sample pair in context
+                it = context_start_index
+                sample_ = episode_lvl_samples[it]
+                while sample_['playback_time'] <= playback_time + context_size:
+                    if sample['raw_id'] != sample_['raw_id'] and \
+                            common_words(content, sample_['content']) >= min_common_words:
+                        sentence_anchor = tokenize(sample['content'], max_len, self.word2ix)
+                        sentence_positive = tokenize(sample_['content'], max_len, self.word2ix)
+                        neg_sample = negative_sampling(sample, all_sentences)
+                        sentence_negative = tokenize(neg_sample['content'], max_len, self.word2ix)
+                        self.samples.append((sentence_anchor, sentence_positive, sentence_negative))
+                        self.labels.append((sample['label'], sample_['label'], neg_sample['label']))
+                    it += 1
+                    if it >= len(episode_lvl_samples):
+                        break
+                    else:
+                        sample_ = episode_lvl_samples[it]
+
+        print('%d samples constructed.' % len(self.samples))
+        return
+
+    def word2ix(self, word):
+        if word in self.word_to_ix:
+            return self.word_to_ix[word]
+        else:
+            return self.word_to_ix['UNK']
+
+    def __getitem__(self, index):
+        sample = self.samples[index]
+        label = self.labels[index]
+        mask = np.zeros(3, dtype=int)
+        for i in range(3):
+            if label[i] != -1:
+                mask[i] = 1
+        sample_dict = {
+            'anchor': sample[0],
+            'pos': sample[1],
+            'neg': sample[2],
+            'label': np.array([label[0], label[1], label[2]]),
+            'mask': mask
+        }
+        return sample_dict
+
+    def __len__(self):
+        return len(self.samples)
+
+    def save_vocab(self, path):
+        vocab = []
+        for word in self.vocab_counter:
+            vocab.append({'idx': self.word_to_ix[word],
+                          'word': word,
+                          'count': self.vocab_counter[word]})
+        df = pd.DataFrame(vocab)
+        df.to_csv(path, index=False)
+        return
+
+    def vocab_size(self):
+        return len(self.word_to_ix)
+
+
+class DmTestDataset(data.Dataset):
+    def __init__(self, dm_samples, max_len, dictionary):
+        self.max_len = max_len
+        self.word_to_ix = dictionary
+
+        print('building samples...')
+        self.samples = []
+        self.labels = []
+        for sample in dm_samples:
+            label = sample['label']
+            sample_ = np.zeros(max_len, dtype=int)
+            index = 0
+            for word in sample['content']:
+                sample_[index] = self.word2ix(word)
+                index += 1
+            self.samples.append(np.array(sample_))
+            self.labels.append(label)
+
+        print('%d samples constructed.' % len(self.samples))
+        return
+
+    def word2ix(self, word):
+        if word in self.word_to_ix:
+            return self.word_to_ix[word]
+        else:
+            return self.word_to_ix['UNK']
+
+    def __getitem__(self, index):
+        return self.samples[index], self.labels[index]
+
+    def __len__(self):
+        return len(self.samples)
+
+
+def common_words(content_a, content_b):
+    word_set = set(content_a)
+    count = 0
+    for word in content_b:
+        if word in word_set:
+            count += 1
+    return count
+
+
+def tokenize(sentence, max_len, dictionary_func):
+    result = np.zeros(max_len, dtype=int)
+    index = 0
+    for word in sentence:
+        result[index] = dictionary_func(word)
+        index += 1
+    return result
+
+
+def negative_sampling(sample, all_samples):
+    content = sample['content']
+    result = None
+    while result is None:
+        candidate = np.random.choice(len(all_samples), 1)
+        sample_ = all_samples[candidate[0]]
+        if common_words(content, sample_['content']) == 0:
+            result = sample_
+    return result
+
+
+def build_dataset(danmaku_complete):
+    danmaku_selected = danmaku_complete[danmaku_complete['season_id'] == '24581']
+    grouped = danmaku_selected.groupby('episode_id')
+
+    context_size = 2.5
+    common_words_min_count = 3
+    min_count = 3
+    max_len = 0
+    samples = []
+    pos_label_set = set()
+    neg_label_set = set()
+
+    # build all danmaku samples
+    for episode_id, group_data in grouped:
+        group_data = group_data.sort_values(by='playback_time')
+        episode_lvl_samples = []
+        print('Processing Episode %d' % episode_id)
+        for index, row in group_data.iterrows():
+            content = row['content']
+            words = word_segment(str(content))
+            if len(words) > max_len:
+                max_len = len(words)
+            if row['block_level'] >= 9:
+                label = 0
+                pos_label_set.add(row['tsc_raw_id'])
+            elif 0 < row['block_level'] <= 2:
+                label = 1
+                neg_label_set.add(row['tsc_raw_id'])
+            else:
+                label = -1
+            sample = {
+                'raw_id': row['tsc_raw_id'],
+                'content': words,
+                'playback_time': row['playback_time'],
+                'label': label
+            }
+            episode_lvl_samples.append(sample)
+        samples.append(episode_lvl_samples)
+
+    # train-test split
+    pos_train, pos_test = train_test_split(list(pos_label_set), test_size=0.25, shuffle=True)
+    neg_tran, neg_test = train_test_split(list(neg_label_set), test_size=0.25, shuffle=True)
+    test_select = set()
+    test_select.update(pos_test)
+    test_select.update(neg_test)
+
+    train_samples = []
+    test_samples = []
+    for episode_lvl_samples in samples:
+        episode_lvl_samples_ = []
+        for sample in episode_lvl_samples:
+            if sample['raw_id'] in test_select:
+                test_samples.append(sample)
+            else:
+                episode_lvl_samples_.append(sample)
+        train_samples.append(episode_lvl_samples_)
+
+    # build Dataset Class
+    dm_train_set = DmTrainDataset(train_samples, min_count, max_len, context_size, common_words_min_count)
+    dm_test_set = DmTestDataset(test_samples, max_len, dm_train_set.word_to_ix)
+    return dm_train_set, dm_test_set
+
+
+def train(dm_train_set, dm_test_set):
+    torch.manual_seed(1)
+
+    EMBEDDING_DIM = 200
+    batch_size = 128
+    epoch_num = 10
+
+    dm_dataloader = data.DataLoader(
+        dataset=dm_train_set,
+        batch_size=128,
+        shuffle=True,
+        drop_last=True,
+        num_workers=8
+    )
+
+    dm_test_dataloader = data.DataLoader(
+        dataset=dm_test_set,
+        batch_size=128,
+        shuffle=True,
+        drop_last=False,
+        num_workers=8
+    )
+
+    model = EmbeddingE2EModeler(dm_train_set.vocab_size(), EMBEDDING_DIM)
+    print(model)
+    if torch.cuda.is_available():
+        print("CUDA : On")
+        model.cuda()
+    else:
+        print("CUDA : Off")
+    optimizer = optim.Adam(model.parameters(), lr=1e-3, betas=(0.9, 0.99))
+
+    for epoch in range(epoch_num):
+        for batch_idx, sample_dict in enumerate(dm_dataloader):
+            anchor = Variable(torch.LongTensor(sample_dict['anchor']))
+            pos = Variable(torch.LongTensor(sample_dict['pos']))
+            neg = Variable(torch.LongTensor(sample_dict['neg']))
+            label = Variable(torch.LongTensor(sample_dict['label']))
+            mask = Variable(torch.LongTensor(sample_dict['mask']))
+            if torch.cuda.is_available():
+                anchor = anchor.cuda()
+                pos = pos.cuda()
+                neg = neg.cuda()
+                label = label.cuda()
+                mask = mask.cuda()
+
+            optimizer.zero_grad()
+            anchor_embed = model.embed(anchor)
+            pos_embed = model.embed(pos)
+            neg_embed = model.embed(neg)
+            triplet_loss = nn.TripletMarginLoss(margin=0.1, p=2)
+            embedding_loss = triplet_loss(anchor_embed, pos_embed, neg_embed)
+            anchor_pred = model.forward(anchor)
+            pos_pred = model.forward(pos)
+            neg_pred = model.forward(neg)
+            final_pred = torch.cat((anchor_pred, pos_pred, neg_pred), dim=0)
+
+            cross_entropy = nn.CrossEntropyLoss(reduction='none')
+            label = label.mul(mask)
+            label = label.view(1, -1).squeeze()
+            classify_loss = cross_entropy(final_pred, label)
+            mask_ = mask.type(torch.FloatTensor).cuda().view(-1)
+            classify_loss = classify_loss.mul(mask_)
+            classify_loss = classify_loss.sum() / mask_.sum()
+
+            alpha = 0.5
+            # loss = alpha * embedding_loss + (1-alpha) * classify_loss
+            loss = classify_loss
+
+            if batch_idx % 1000 == 0:
+                print('epoch: %d batch %d : loss: %4.6f embed-loss: %4.6f class-loss: %4.6f'
+                      % (epoch, batch_idx, loss.item(), embedding_loss.item(), classify_loss.item()))
+            loss.backward()
+            optimizer.step()
+
+        pred_array = []
+        label_array = []
+        for batch_idx, (sentence, label) in enumerate(dm_test_dataloader):
+            sentence = Variable(torch.LongTensor(sentence))
+            if torch.cuda.is_available():
+                sentence = sentence.cuda()
+            pred = model.forward(sentence)
+            pred_array.extend(pred.argmax(dim=1).cpu().numpy())
+            label_array.extend(label.numpy())
+        print(classification_report(label_array, pred_array))

@@ -5,7 +5,7 @@ import jieba.posseg as segtool
 import re
 
 ACCEPTABLE_TYPE = {'n', 't', 's', 'f', 'v', 'a', 'b', 'z', 'e', 'y', 'o'}
-REJECT_TYPE = {'u', 'x'}
+REJECT_TYPE = {'u'}
 REPLACE_DICT = {
     "233+": "233",
     "666+": "666",
