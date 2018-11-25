@@ -40,9 +40,8 @@ class EmbeddingE2EModeler(nn.Module):
         h1 = F.dropout(h1, p=0.5)
         h2 = F.relu(self.fc2(h1))
         h2 = F.dropout(h2, p=0.5)
-        h3 = F.sigmoid(self.fc3(h2))
-        out = F.softmax(h3, dim=1)
-        return out
+        h3 = F.relu(self.fc3(h2))
+        return h3
 
 
 class DmTrainDataset(data.Dataset):
@@ -285,7 +284,7 @@ def train(dm_train_set, dm_test_set):
 
     EMBEDDING_DIM = 200
     batch_size = 128
-    epoch_num = 10
+    epoch_num = 30
 
     dm_dataloader = data.DataLoader(
         dataset=dm_train_set,
@@ -310,7 +309,7 @@ def train(dm_train_set, dm_test_set):
         model.cuda()
     else:
         print("CUDA : Off")
-    optimizer = optim.Adam(model.parameters(), lr=1e-3, betas=(0.9, 0.99))
+    optimizer = optim.Adam(model.parameters(), lr=1e-8, betas=(0.9, 0.99))
 
     for epoch in range(epoch_num):
         for batch_idx, sample_dict in enumerate(dm_dataloader):
@@ -330,7 +329,7 @@ def train(dm_train_set, dm_test_set):
             anchor_embed = model.embed(anchor)
             pos_embed = model.embed(pos)
             neg_embed = model.embed(neg)
-            triplet_loss = nn.TripletMarginLoss(margin=0.1, p=2)
+            triplet_loss = nn.TripletMarginLoss(margin=10, p=2)
             embedding_loss = triplet_loss(anchor_embed, pos_embed, neg_embed)
             anchor_pred = model.forward(anchor)
             pos_pred = model.forward(pos)
@@ -345,9 +344,10 @@ def train(dm_train_set, dm_test_set):
             classify_loss = classify_loss.mul(mask_)
             classify_loss = classify_loss.sum() / mask_.sum()
 
-            alpha = 0.5
-            # loss = alpha * embedding_loss + (1-alpha) * classify_loss
-            loss = classify_loss
+            alpha = 0.2
+            loss = alpha * embedding_loss + (1-alpha) * classify_loss
+            # loss = classify_loss
+            # loss = embedding_loss
 
             if batch_idx % 1000 == 0:
                 print('epoch: %d batch %d : loss: %4.6f embed-loss: %4.6f class-loss: %4.6f'
@@ -362,6 +362,7 @@ def train(dm_train_set, dm_test_set):
             if torch.cuda.is_available():
                 sentence = sentence.cuda()
             pred = model.forward(sentence)
+            pred = F.softmax(pred, dim=1)
             pred_array.extend(pred.argmax(dim=1).cpu().numpy())
             label_array.extend(label.numpy())
         print(classification_report(label_array, pred_array))

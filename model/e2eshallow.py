@@ -38,9 +38,8 @@ class EmbeddingE2EModeler(nn.Module):
         h1 = F.dropout(h1, p=0.5)
         h2 = F.relu(self.fc2(h1))
         h2 = F.dropout(h2, p=0.5)
-        h3 = F.sigmoid(self.fc3(h2))
-        out = F.softmax(h3, dim=1)
-        return out
+        h3 = F.relu(self.fc3(h2))
+        return h3
 
 
 class DmDataset(data.Dataset):
@@ -156,7 +155,7 @@ def train(dm_train_set, dm_test_set):
 
     EMBEDDING_DIM = 200
     batch_size = 128
-    epoch_num = 50
+    epoch_num = 150
 
     dm_dataloader = data.DataLoader(
         dataset=dm_train_set,
@@ -181,7 +180,7 @@ def train(dm_train_set, dm_test_set):
         model.cuda()
     else:
         print("CUDA : Off")
-    optimizer = optim.Adam(model.parameters(), lr=1e-6, betas=(0.9, 0.99))
+    optimizer = optim.Adam(model.parameters(), lr=1e-4, betas=(0.9, 0.99))
 
     for epoch in range(epoch_num):
         for batch_idx, (sentence, label) in enumerate(dm_dataloader):
@@ -206,6 +205,7 @@ def train(dm_train_set, dm_test_set):
             if torch.cuda.is_available():
                 sentence = sentence.cuda()
             pred = model.forward(sentence)
+            pred = F.softmax(pred, dim=1)
             pred_array.extend(pred.argmax(dim=1).cpu().numpy())
             label_array.extend(label.numpy())
         print(classification_report(label_array, pred_array))
