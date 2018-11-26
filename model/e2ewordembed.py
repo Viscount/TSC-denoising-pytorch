@@ -25,9 +25,10 @@ class EmbeddingE2EModeler(nn.Module):
         self.fc2 = nn.Linear(256, 128, bias=True)
         self.fc3 = nn.Linear(128, 2, bias=True)
 
-    def init_emb(self):
-        initrange = 0.5 / self.embedding_dim
-        self.u_embeddings.weight.data.uniform_(-initrange, initrange)
+    def init_emb(self, pre_train_weight):
+        if pre_train_weight.shape == self.embedding.weight.data.shape:
+            self.embedding.weight.data = pre_train_weight
+        return
 
     def embed(self, sentence):
         sent_emd = self.embedding(sentence)
