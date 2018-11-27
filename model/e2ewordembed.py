@@ -20,13 +20,17 @@ class EmbeddingE2EModeler(nn.Module):
 
     def __init__(self, vocab_size, embedding_dim):
         super(EmbeddingE2EModeler, self).__init__()
+        self.embedding_dim = embedding_dim
         self.embedding = nn.Embedding(vocab_size, embedding_dim, padding_idx=0)
         self.fc1 = nn.Linear(embedding_dim, 256, bias=True)
         self.fc2 = nn.Linear(256, 128, bias=True)
         self.fc3 = nn.Linear(128, 2, bias=True)
 
     def init_emb(self, pre_train_weight):
+        init_range = 1 / self.embedding_dim
         if pre_train_weight.shape == self.embedding.weight.data.shape:
+            pre_train_weight[1:] = np.random.uniform(-init_range, init_range, pre_train_weight.shape[1])
+            pre_train_weight = torch.FloatTensor(pre_train_weight)
             self.embedding.weight.data = pre_train_weight
         return
 
@@ -285,7 +289,7 @@ def train(dm_train_set, dm_test_set):
 
     EMBEDDING_DIM = 200
     batch_size = 128
-    epoch_num = 30
+    epoch_num = 100
 
     dm_dataloader = data.DataLoader(
         dataset=dm_train_set,
@@ -305,12 +309,14 @@ def train(dm_train_set, dm_test_set):
 
     model = EmbeddingE2EModeler(dm_train_set.vocab_size(), EMBEDDING_DIM)
     print(model)
+    init_weight = np.loadtxt("./tmp/weights.txt")
+    model.init_emb(init_weight)
     if torch.cuda.is_available():
         print("CUDA : On")
         model.cuda()
     else:
         print("CUDA : Off")
-    optimizer = optim.Adam(model.parameters(), lr=1e-8, betas=(0.9, 0.99))
+    optimizer = optim.Adam(model.parameters(), lr=1e-7, betas=(0.9, 0.99))
 
     for epoch in range(epoch_num):
         for batch_idx, sample_dict in enumerate(dm_dataloader):
@@ -345,7 +351,7 @@ def train(dm_train_set, dm_test_set):
             classify_loss = classify_loss.mul(mask_)
             classify_loss = classify_loss.sum() / mask_.sum()
 
-            alpha = 0.2
+            alpha = 0.1
             loss = alpha * embedding_loss + (1-alpha) * classify_loss
             # loss = classify_loss
             # loss = embedding_loss
