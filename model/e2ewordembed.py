@@ -14,6 +14,7 @@ import collections
 from util.word_segment import word_segment
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report
+from tensorboardX import SummaryWriter
 
 
 class EmbeddingE2EModeler(nn.Module):
@@ -316,7 +317,9 @@ def train(dm_train_set, dm_test_set):
         model.cuda()
     else:
         print("CUDA : Off")
-    optimizer = optim.Adam(model.parameters(), lr=1e-7, betas=(0.9, 0.99))
+    optimizer = optim.Adam(model.parameters(), lr=1e-8, betas=(0.9, 0.99))
+
+    writer = SummaryWriter()
 
     for epoch in range(epoch_num):
         for batch_idx, sample_dict in enumerate(dm_dataloader):
@@ -325,12 +328,14 @@ def train(dm_train_set, dm_test_set):
             neg = Variable(torch.LongTensor(sample_dict['neg']))
             label = Variable(torch.LongTensor(sample_dict['label']))
             mask = Variable(torch.LongTensor(sample_dict['mask']))
+            mask_ = mask.type(torch.FloatTensor).view(-1)
             if torch.cuda.is_available():
                 anchor = anchor.cuda()
                 pos = pos.cuda()
                 neg = neg.cuda()
                 label = label.cuda()
                 mask = mask.cuda()
+                mask_ = mask_.cuda()
 
             optimizer.zero_grad()
             anchor_embed = model.embed(anchor)
@@ -347,7 +352,6 @@ def train(dm_train_set, dm_test_set):
             label = label.mul(mask)
             label = label.view(1, -1).squeeze()
             classify_loss = cross_entropy(final_pred, label)
-            mask_ = mask.type(torch.FloatTensor).cuda().view(-1)
             classify_loss = classify_loss.mul(mask_)
             classify_loss = classify_loss.sum() / mask_.sum()
 
@@ -359,6 +363,11 @@ def train(dm_train_set, dm_test_set):
             if batch_idx % 1000 == 0:
                 print('epoch: %d batch %d : loss: %4.6f embed-loss: %4.6f class-loss: %4.6f'
                       % (epoch, batch_idx, loss.item(), embedding_loss.item(), classify_loss.item()))
+                writer.add_scalars('data/loss', {
+                    'Total Loss': loss,
+                    'Embedding Loss': embedding_loss,
+                    'Classify Loss': classify_loss
+                }, epoch * 10 + batch_idx/1000)
             loss.backward()
             optimizer.step()
 
@@ -372,4 +381,7 @@ def train(dm_train_set, dm_test_set):
             pred = F.softmax(pred, dim=1)
             pred_array.extend(pred.argmax(dim=1).cpu().numpy())
             label_array.extend(label.numpy())
+        writer.add_pr_curve('data/pr', label_array, pred_array, epoch)
         print(classification_report(label_array, pred_array))
+
+    writer.close()
