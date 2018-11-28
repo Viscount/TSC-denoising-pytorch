@@ -46,7 +46,7 @@ class EmbeddingE2EModeler(nn.Module):
         h1 = F.dropout(h1, p=0.5)
         h2 = F.relu(self.fc2(h1))
         h2 = F.dropout(h2, p=0.5)
-        h3 = F.relu(self.fc3(h2))
+        h3 = self.fc3(h2)
         return h3
 
 
@@ -323,8 +323,8 @@ def train(dm_train_set, dm_test_set):
 
     optimizer = optim.Adam([
                 {'params': other_params},
-                {'params': model.embedding.parameters(), 'lr': 1e-4}
-            ], lr=1e-8, betas=(0.9, 0.99))
+                {'params': model.embedding.parameters(), 'lr': 1e-3}
+            ], lr=1e-2, betas=(0.9, 0.99))
 
     logging = False
     if logging:
@@ -352,14 +352,16 @@ def train(dm_train_set, dm_test_set):
             neg_embed = model.embed(neg)
             triplet_loss = nn.TripletMarginLoss(margin=10, p=2)
             embedding_loss = triplet_loss(anchor_embed, pos_embed, neg_embed)
-            anchor_pred = model.forward(anchor)
-            pos_pred = model.forward(pos)
-            neg_pred = model.forward(neg)
-            final_pred = torch.cat((anchor_pred, pos_pred, neg_pred), dim=0)
+            anchor_pred = model.forward(anchor).unsqueeze(1)
+            pos_pred = model.forward(pos).unsqueeze(1)
+            neg_pred = model.forward(neg).unsqueeze(1)
+            final_pred = torch.cat((anchor_pred, pos_pred, neg_pred), dim=1)
+            final_pred = final_pred.view(1, -1, 2)
+            final_pred = final_pred.squeeze()
 
             cross_entropy = nn.CrossEntropyLoss(reduction='none')
             label = label.mul(mask)
-            label = label.view(1, -1).squeeze()
+            label = label.view(-1)
             classify_loss = cross_entropy(final_pred, label)
             classify_loss = classify_loss.mul(mask_)
             classify_loss = classify_loss.sum() / mask_.sum()

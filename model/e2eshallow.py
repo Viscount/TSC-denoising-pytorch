@@ -38,7 +38,7 @@ class EmbeddingE2EModeler(nn.Module):
         h1 = F.dropout(h1, p=0.5)
         h2 = F.relu(self.fc2(h1))
         h2 = F.dropout(h2, p=0.5)
-        h3 = F.relu(self.fc3(h2))
+        h3 = self.fc3(h2)
         return h3
 
 
