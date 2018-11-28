@@ -326,7 +326,9 @@ def train(dm_train_set, dm_test_set):
                 {'params': model.embedding.parameters(), 'lr': 1e-4}
             ], lr=1e-8, betas=(0.9, 0.99))
 
-    writer = SummaryWriter()
+    logging = False
+    if logging:
+        writer = SummaryWriter()
 
     for epoch in range(epoch_num):
         for batch_idx, sample_dict in enumerate(dm_dataloader):
@@ -362,7 +364,7 @@ def train(dm_train_set, dm_test_set):
             classify_loss = classify_loss.mul(mask_)
             classify_loss = classify_loss.sum() / mask_.sum()
 
-            alpha = 0.5
+            alpha = 0.3
             loss = alpha * embedding_loss + (1-alpha) * classify_loss
             # loss = classify_loss
             # loss = embedding_loss
@@ -370,11 +372,12 @@ def train(dm_train_set, dm_test_set):
             if batch_idx % 1000 == 0:
                 print('epoch: %d batch %d : loss: %4.6f embed-loss: %4.6f class-loss: %4.6f'
                       % (epoch, batch_idx, loss.item(), embedding_loss.item(), classify_loss.item()))
-                writer.add_scalars('data/loss', {
-                    'Total Loss': loss,
-                    'Embedding Loss': embedding_loss,
-                    'Classify Loss': classify_loss
-                }, epoch * 10 + batch_idx/1000)
+                if logging:
+                    writer.add_scalars('data/loss', {
+                        'Total Loss': loss,
+                        'Embedding Loss': embedding_loss,
+                        'Classify Loss': classify_loss
+                    }, epoch * 10 + batch_idx/1000)
             loss.backward()
             optimizer.step()
 
@@ -388,16 +391,17 @@ def train(dm_train_set, dm_test_set):
             pred = F.softmax(pred, dim=1)
             pred_array.extend(pred.argmax(dim=1).cpu().numpy())
             label_array.extend(label.numpy())
-        result_dict = classification_report(label_array, pred_array, output_dict=True)
-        writer.add_scalars('data/0-PRF', {
-            '0-Precision': result_dict['0']['precision'],
-            '0-Recall': result_dict['0']['recall'],
-            '0-F1-score': result_dict['0']['f1-score']
-        }, epoch)
-        writer.add_scalars('data/1-PRF', {
-            '1-Precision': result_dict['1']['precision'],
-            '1-Recall': result_dict['1']['recall'],
-            '1-F1-score': result_dict['1']['f1-score']
-        }, epoch)
+        if logging:
+            result_dict = classification_report(label_array, pred_array, output_dict=True)
+            writer.add_scalars('data/0-PRF', {
+                '0-Precision': result_dict['0']['precision'],
+                '0-Recall': result_dict['0']['recall'],
+                '0-F1-score': result_dict['0']['f1-score']
+            }, epoch)
+            writer.add_scalars('data/1-PRF', {
+                '1-Precision': result_dict['1']['precision'],
+                '1-Recall': result_dict['1']['recall'],
+                '1-F1-score': result_dict['1']['f1-score']
+            }, epoch)
         print(classification_report(label_array, pred_array))
     writer.close()
