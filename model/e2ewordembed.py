@@ -86,7 +86,6 @@ class DmTrainDataset(data.Dataset):
         print('building samples...')
         self.samples = []
         self.labels = []
-        self.all_sentences = []
         for episode_lvl_samples in dm_samples:
             context_start_index = 0
             for sample in episode_lvl_samples:
@@ -285,6 +284,28 @@ def build_dataset(danmaku_complete):
     return dm_train_set, dm_test_set
 
 
+def validate(model, dm_test_set):
+    dm_dataloader = data.DataLoader(
+        dataset=dm_test_set,
+        batch_size=128,
+        shuffle=True,
+        drop_last=False,
+        num_workers=8
+    )
+    pred_array = []
+    label_array = []
+    for batch_idx, (sentence, label) in enumerate(dm_dataloader):
+        sentence = Variable(torch.LongTensor(sentence))
+        if torch.cuda.is_available():
+            sentence = sentence.cuda()
+        pred = model.forward(sentence)
+        pred = F.softmax(pred, dim=1)
+        pred_array.extend(pred.argmax(dim=1).cpu().numpy())
+        label_array.extend(label.numpy())
+    print(classification_report(label_array, pred_array))
+    return
+
+
 def train(dm_train_set, dm_test_set):
     torch.manual_seed(1)
 
@@ -294,7 +315,7 @@ def train(dm_train_set, dm_test_set):
 
     dm_dataloader = data.DataLoader(
         dataset=dm_train_set,
-        batch_size=128,
+        batch_size=batch_size,
         shuffle=True,
         drop_last=True,
         num_workers=8
@@ -302,7 +323,7 @@ def train(dm_train_set, dm_test_set):
 
     dm_test_dataloader = data.DataLoader(
         dataset=dm_test_set,
-        batch_size=128,
+        batch_size=batch_size,
         shuffle=True,
         drop_last=False,
         num_workers=8
@@ -407,3 +428,4 @@ def train(dm_train_set, dm_test_set):
             }, epoch)
         print(classification_report(label_array, pred_array))
     writer.close()
+    return
