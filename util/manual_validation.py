@@ -5,6 +5,7 @@ import pandas as pd
 import csv
 import pickle
 from util.word_segment import word_segment
+from model.e2eshallow import DmDataset
 from model.e2ewordembed import DmTestDataset
 
 
@@ -37,8 +38,12 @@ def build_valid_set(all_danmakus, select_dict):
                 'label': select_dict[row['tsc_raw_id']]
             }
             samples.append(sample)
-    train_set = pickle.load(open('../tmp/e2e_we_train_dataset.pkl', 'rb'))
-    test_set = DmTestDataset(samples, train_set.max_len, train_set.word_to_ix)
+
+    train_set = pickle.load(open('../tmp/e2e_train_dataset.pkl', 'rb'))
+    test_set = DmDataset(samples, 2, train_set.max_len, train_set.word_to_ix)
+
+    # train_set = pickle.load(open('../tmp/e2e_we_train_dataset.pkl', 'rb'))
+    # test_set = DmTestDataset(samples, train_set.max_len, train_set.word_to_ix)
     return test_set
 
 
@@ -47,4 +52,4 @@ if __name__ == '__main__':
     valid_data_dict = load_validation_data("../data/manual_validation.csv")
     valid_set = build_valid_set(danmaku_selected, valid_data_dict)
     print(type(valid_set))
-    pickle.dump(valid_set, open('../tmp/e2e_we_valid_dataset.pkl', 'wb'))
+    pickle.dump(valid_set, open('../tmp/e2e_valid_dataset.pkl', 'wb'))

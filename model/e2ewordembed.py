@@ -344,8 +344,8 @@ def train(dm_train_set, dm_test_set):
 
     optimizer = optim.Adam([
                 {'params': other_params},
-                {'params': model.embedding.parameters(), 'lr': 1e-3}
-            ], lr=1e-2, betas=(0.9, 0.99))
+                {'params': model.embedding.parameters(), 'lr': 1e-4}
+            ], lr=1e-3, betas=(0.9, 0.99))
 
     logging = False
     if logging:
@@ -387,7 +387,7 @@ def train(dm_train_set, dm_test_set):
             classify_loss = classify_loss.mul(mask_)
             classify_loss = classify_loss.sum() / mask_.sum()
 
-            alpha = 0.3
+            alpha = 0.5
             loss = alpha * embedding_loss + (1-alpha) * classify_loss
             # loss = classify_loss
             # loss = embedding_loss
@@ -414,6 +414,7 @@ def train(dm_train_set, dm_test_set):
             pred = F.softmax(pred, dim=1)
             pred_array.extend(pred.argmax(dim=1).cpu().numpy())
             label_array.extend(label.numpy())
+
         if logging:
             result_dict = classification_report(label_array, pred_array, output_dict=True)
             writer.add_scalars('data/0-PRF', {
@@ -427,5 +428,8 @@ def train(dm_train_set, dm_test_set):
                 '1-F1-score': result_dict['1']['f1-score']
             }, epoch)
         print(classification_report(label_array, pred_array))
+
+        dm_valid_set = pickle.load(open('./tmp/e2e_we_valid_dataset.pkl', 'rb'))
+        validate(model, dm_valid_set)
     writer.close()
     return

@@ -51,7 +51,7 @@ class DmDataset(data.Dataset):
             print('building vocabulary...')
             aggregate_sample = []
             for sample in dm_samples:
-                aggregate_sample.extend(sample['words'])
+                aggregate_sample.extend(sample['content'])
             counter = {'UNK': 0}
             counter.update(collections.Counter(aggregate_sample).most_common())
             rare_words = set()
@@ -77,7 +77,7 @@ class DmDataset(data.Dataset):
             label = sample['label']
             sample_ = np.zeros(max_len, dtype=int)
             index = 0
-            for word in sample['words']:
+            for word in sample['content']:
                 sample_[index] = self.word2ix(word)
                 index += 1
             self.samples.append(np.array(sample_))
@@ -129,14 +129,14 @@ def build_dataset(danmaku_complete):
             label = 0
             samples.append({
                 'raw_id': row['tsc_raw_id'],
-                'words': words,
+                'content': words,
                 'label': label
             })
         elif 0 < row['block_level'] <= 2:
             label = 1
             samples.append({
                 'raw_id': row['tsc_raw_id'],
-                'words': words,
+                'content': words,
                 'label': label
             })
         else:
@@ -148,6 +148,28 @@ def build_dataset(danmaku_complete):
     dm_train_set = DmDataset(train_samples, min_count, max_len)
     dm_test_set = DmDataset(test_samples, min_count, max_len, dictionary=dm_train_set.word_to_ix)
     return dm_train_set, dm_test_set
+
+
+def validate(model, dm_test_set):
+    dm_dataloader = data.DataLoader(
+        dataset=dm_test_set,
+        batch_size=128,
+        shuffle=True,
+        drop_last=False,
+        num_workers=8
+    )
+    pred_array = []
+    label_array = []
+    for batch_idx, (sentence, label) in enumerate(dm_dataloader):
+        sentence = Variable(torch.LongTensor(sentence))
+        if torch.cuda.is_available():
+            sentence = sentence.cuda()
+        pred = model.forward(sentence)
+        pred = F.softmax(pred, dim=1)
+        pred_array.extend(pred.argmax(dim=1).cpu().numpy())
+        label_array.extend(label.numpy())
+    print(classification_report(label_array, pred_array))
+    return
 
 
 def train(dm_train_set, dm_test_set):
@@ -198,6 +220,7 @@ def train(dm_train_set, dm_test_set):
                 print('epoch: %d batch %d : loss: %4.6f' % (epoch, batch_idx, loss.item()))
             loss.backward()
             optimizer.step()
+
         pred_array = []
         label_array = []
         for batch_idx, (sentence, label) in enumerate(dm_test_dataloader):
@@ -209,3 +232,7 @@ def train(dm_train_set, dm_test_set):
             pred_array.extend(pred.argmax(dim=1).cpu().numpy())
             label_array.extend(label.numpy())
         print(classification_report(label_array, pred_array))
+
+        dm_valid_set = pickle.load(open('./tmp/e2e_valid_dataset.pkl', 'rb'))
+        validate(model, dm_valid_set)
+    return
