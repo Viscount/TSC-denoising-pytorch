@@ -11,6 +11,7 @@ import model.skip_gram as skip_gram
 import model.tsc_embed as tsc_embed
 import model.e2eshallow as e2e
 import model.e2ewordembed as e2e_we
+import model.e2ecnn as e2e_cnn
 
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
@@ -55,4 +56,5 @@ if __name__ == "__main__":
     # skip_gram.train(dataset)
     # tsc_embed.train(dataset)
     # e2e.train(train_set, test_set)
-    e2e_we.train(train_set, test_set)
+    # e2e_we.train(train_set, test_set)
+    e2e_cnn.train(train_set, test_set)
