@@ -331,7 +331,7 @@ def train(dm_train_set, dm_test_set):
 
     model = EmbeddingE2EModeler(dm_train_set.vocab_size(), EMBEDDING_DIM)
     print(model)
-    init_weight = np.loadtxt("./tmp/weights.txt")
+    init_weight = np.loadtxt("./tmp/we_weights.txt")
     model.init_emb(init_weight)
     if torch.cuda.is_available():
         print("CUDA : On")

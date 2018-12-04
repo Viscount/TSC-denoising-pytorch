@@ -28,6 +28,7 @@ class EmbeddingE2EModeler(nn.Module):
 
     def init_emb(self, pre_train_weight):
         if pre_train_weight.shape == self.embedding.weight.data.shape:
+            pre_train_weight = torch.FloatTensor(pre_train_weight)
             self.embedding.weight.data = pre_train_weight
         return
 
@@ -181,7 +182,7 @@ def train(dm_train_set, dm_test_set):
 
     dm_dataloader = data.DataLoader(
         dataset=dm_train_set,
-        batch_size=128,
+        batch_size=batch_size,
         shuffle=True,
         drop_last=True,
         num_workers=8
@@ -189,7 +190,7 @@ def train(dm_train_set, dm_test_set):
 
     dm_test_dataloader = data.DataLoader(
         dataset=dm_test_set,
-        batch_size=128,
+        batch_size=batch_size,
         shuffle=True,
         drop_last=False,
         num_workers=8
@@ -197,6 +198,8 @@ def train(dm_train_set, dm_test_set):
 
     model = EmbeddingE2EModeler(dm_train_set.vocab_size(), EMBEDDING_DIM)
     print(model)
+    # init_weight = np.loadtxt("./tmp/weights.txt")
+    # model.init_emb(init_weight)
     if torch.cuda.is_available():
         print("CUDA : On")
         model.cuda()

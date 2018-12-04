@@ -3,6 +3,7 @@
 
 import jieba.posseg as segtool
 import re
+from xpinyin import Pinyin
 
 ACCEPTABLE_TYPE = {'n', 't', 's', 'f', 'v', 'a', 'b', 'z', 'e', 'y', 'o'}
 REJECT_TYPE = {'u'}
@@ -39,11 +40,24 @@ def check_replace(word):
     return word
 
 
-def word_segment(content):
+def word_segment(content, mode='ch'):
     words = []
     results = segtool.cut(content)
     for result in results:
         result.word = check_replace(result.word)
         if check_type(result.flag, "REJT"):
             words.append(result.word)
-    return words
+    if mode == 'ch':
+        return words
+    elif mode == 'py':
+        p = Pinyin()
+        words_ = [p.get_pinyin(word, '') for word in words]
+        return words_
+    else:
+        return words
+
+if __name__ == "__main__":
+    p = Pinyin()
+    word = p.get_pinyin("你好", '')
+    print(word)
+    print(type(word))

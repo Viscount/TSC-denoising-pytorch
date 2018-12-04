@@ -37,7 +37,7 @@ class E2ECNNModeler(nn.Module):
         if pre_train_weight.shape == self.dynamic_embedding.weight.data.shape:
             pre_train_weight[1:] = np.random.uniform(-init_range, init_range, pre_train_weight.shape[1])
             pre_train_weight = torch.FloatTensor(pre_train_weight)
-            self.static_embedding.weight.data = pre_train_weight
+            self.static_embedding = nn.Embedding.from_pretrained(pre_train_weight, freeze=True)
             self.dynamic_embedding.weight.data = pre_train_weight
         return
 
@@ -117,7 +117,7 @@ def train(dm_train_set, dm_test_set):
 
     model = E2ECNNModeler(dm_train_set.vocab_size(), EMBEDDING_DIM, feature_dim, windows_size, max_len)
     print(model)
-    init_weight = np.loadtxt("./tmp/weights.txt")
+    init_weight = np.loadtxt("./tmp/we_weights.txt")
     model.init_emb(init_weight)
     if torch.cuda.is_available():
         print("CUDA : On")
