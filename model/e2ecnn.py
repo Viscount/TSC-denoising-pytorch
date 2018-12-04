@@ -9,7 +9,6 @@ import pickle
 import torch.utils.data as data
 from torch.autograd import Variable
 import torch.optim as optim
-from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report
 from tensorboardX import SummaryWriter
 
@@ -18,7 +17,7 @@ class E2ECNNModeler(nn.Module):
     def __init__(self, vocab_size, embedding_dim, feature_dim, window_sizes, max_len):
         super(E2ECNNModeler, self).__init__()
         self.embedding_dim = embedding_dim
-        # self.static_embedding = nn.Embedding(vocab_size, embedding_dim, padding_idx=0)
+        self.static_embedding = nn.Embedding(vocab_size, embedding_dim, padding_idx=0)
         self.dynamic_embedding = nn.Embedding(vocab_size, embedding_dim, padding_idx=0)
 
         self.convs = nn.ModuleList([
@@ -29,7 +28,7 @@ class E2ECNNModeler(nn.Module):
                               nn.MaxPool1d(kernel_size=max_len-h+1))
                 for h in window_sizes])
 
-        self.fc1 = nn.Linear(feature_dim * len(window_sizes), 256, bias=True)
+        self.fc1 = nn.Linear(feature_dim * len(window_sizes) * 2, 256, bias=True)
         self.fc2 = nn.Linear(256, 128, bias=True)
         self.fc3 = nn.Linear(128, 2, bias=True)
 
@@ -38,7 +37,7 @@ class E2ECNNModeler(nn.Module):
         if pre_train_weight.shape == self.dynamic_embedding.weight.data.shape:
             pre_train_weight[1:] = np.random.uniform(-init_range, init_range, pre_train_weight.shape[1])
             pre_train_weight = torch.FloatTensor(pre_train_weight)
-            # self.static_embedding.weight.data = pre_train_weight
+            self.static_embedding.weight.data = pre_train_weight
             self.dynamic_embedding.weight.data = pre_train_weight
         return
 
@@ -52,6 +51,13 @@ class E2ECNNModeler(nn.Module):
         sent_emd = sent_emd.permute(0, 2, 1)
         out = [conv(sent_emd) for conv in self.convs]
         out = torch.cat(out, dim=1).squeeze()
+
+        sent_static_emd = self.static_embedding(sentence)
+        sent_static_emd = sent_static_emd.permute(0, 2, 1)
+        out_ = [conv(sent_static_emd) for conv in self.convs]
+        out_ = torch.cat(out_, dim=1).squeeze()
+
+        out = torch.cat([out, out_], dim=1)
 
         h1 = F.relu(self.fc1(out))
         h1 = F.dropout(h1, p=0.5)
@@ -208,8 +214,10 @@ def train(dm_train_set, dm_test_set):
                 '1-F1-score': result_dict['1']['f1-score']
             }, epoch)
         print(classification_report(label_array, pred_array))
+
         dm_valid_set = pickle.load(open('./tmp/e2e_we_valid_dataset.pkl', 'rb'))
         validate(model, dm_valid_set)
 
-    # writer.close()
+    if logging:
+        writer.close()
     return

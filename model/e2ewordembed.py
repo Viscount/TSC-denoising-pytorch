@@ -431,5 +431,7 @@ def train(dm_train_set, dm_test_set):
 
         dm_valid_set = pickle.load(open('./tmp/e2e_we_valid_dataset.pkl', 'rb'))
         validate(model, dm_valid_set)
-    writer.close()
+
+    if logging:
+        writer.close()
     return
