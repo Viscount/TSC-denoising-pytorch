@@ -29,13 +29,13 @@ class E2ECNNModeler(nn.Module):
                               nn.MaxPool1d(kernel_size=max_len-h+1))
                 for h in window_sizes])
 
-        self.fc1 = nn.Linear(feature_dim, 256, bias=True)
+        self.fc1 = nn.Linear(feature_dim * len(window_sizes), 256, bias=True)
         self.fc2 = nn.Linear(256, 128, bias=True)
         self.fc3 = nn.Linear(128, 2, bias=True)
 
     def init_emb(self, pre_train_weight):
         init_range = 1 / self.embedding_dim
-        if pre_train_weight.shape == self.static_embedding.weight.data.shape:
+        if pre_train_weight.shape == self.dynamic_embedding.weight.data.shape:
             pre_train_weight[1:] = np.random.uniform(-init_range, init_range, pre_train_weight.shape[1])
             pre_train_weight = torch.FloatTensor(pre_train_weight)
             # self.static_embedding.weight.data = pre_train_weight
@@ -48,10 +48,10 @@ class E2ECNNModeler(nn.Module):
         return sent_emd
 
     def forward(self, sentence):
-        sent_emd = self.embed(sentence)
+        sent_emd = self.dynamic_embedding(sentence)
         sent_emd = sent_emd.permute(0, 2, 1)
         out = [conv(sent_emd) for conv in self.convs]
-        out = torch.cat(out, dim=1)
+        out = torch.cat(out, dim=1).squeeze()
 
         h1 = F.relu(self.fc1(out))
         h1 = F.dropout(h1, p=0.5)
@@ -61,13 +61,35 @@ class E2ECNNModeler(nn.Module):
         return h3
 
 
+def validate(model, dm_test_set):
+    dm_dataloader = data.DataLoader(
+        dataset=dm_test_set,
+        batch_size=128,
+        shuffle=True,
+        drop_last=False,
+        num_workers=8
+    )
+    pred_array = []
+    label_array = []
+    for batch_idx, (sentence, label) in enumerate(dm_dataloader):
+        sentence = Variable(torch.LongTensor(sentence))
+        if torch.cuda.is_available():
+            sentence = sentence.cuda()
+        pred = model.forward(sentence)
+        pred = F.softmax(pred, dim=1)
+        pred_array.extend(pred.argmax(dim=1).cpu().numpy())
+        label_array.extend(label.numpy())
+    print(classification_report(label_array, pred_array))
+    return
+
+
 def train(dm_train_set, dm_test_set):
     torch.manual_seed(1)
 
     EMBEDDING_DIM = 200
-    feature_dim = 100
-    max_len = 35
-    windows_size = [2, 3, 4]
+    feature_dim = 50
+    max_len = 49
+    windows_size = [2, 3, 4, 5]
     batch_size = 128
     epoch_num = 100
 
@@ -186,6 +208,8 @@ def train(dm_train_set, dm_test_set):
                 '1-F1-score': result_dict['1']['f1-score']
             }, epoch)
         print(classification_report(label_array, pred_array))
+        dm_valid_set = pickle.load(open('./tmp/e2e_we_valid_dataset.pkl', 'rb'))
+        validate(model, dm_valid_set)
 
-    writer.close()
+    # writer.close()
     return
