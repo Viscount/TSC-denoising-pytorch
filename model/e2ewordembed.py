@@ -13,6 +13,7 @@ import pandas as pd
 import collections
 from util.word_segment import word_segment
 import util.validation as valid_util
+import util.strategy as stg
 from sklearn.model_selection import train_test_split
 from tensorboardX import SummaryWriter
 
@@ -365,7 +366,7 @@ def train(dm_train_set, dm_test_set):
             classify_loss = classify_loss.mul(mask_)
             classify_loss = classify_loss.sum() / mask_.sum()
 
-            alpha = 0.5
+            alpha = stg.linear_alpha(0.5, 0.8, epoch, epoch_num)
             loss = alpha * embedding_loss + (1-alpha) * classify_loss
             # loss = classify_loss
             # loss = embedding_loss
