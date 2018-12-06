@@ -64,4 +64,4 @@ if __name__ == "__main__":
     dataset = pickle.load(open('../tmp/e2e_we_train_dataset.pkl', 'rb'))
     dictionary = dataset.word_to_ix
     weight = get_weight(word_model, dictionary, word_dim)
-    np.savetxt("../tmp/weights.txt", weight)
+    np.savetxt("../tmp/we_weights.txt", weight)

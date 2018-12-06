@@ -12,8 +12,9 @@ import numpy as np
 import pandas as pd
 import collections
 from util.word_segment import word_segment
+import util.validation as valid_util
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import classification_report
+from tensorboardX import SummaryWriter
 
 
 class EmbeddingE2EModeler(nn.Module):
@@ -151,28 +152,6 @@ def build_dataset(danmaku_complete):
     return dm_train_set, dm_test_set
 
 
-def validate(model, dm_test_set):
-    dm_dataloader = data.DataLoader(
-        dataset=dm_test_set,
-        batch_size=128,
-        shuffle=True,
-        drop_last=False,
-        num_workers=8
-    )
-    pred_array = []
-    label_array = []
-    for batch_idx, (sentence, label) in enumerate(dm_dataloader):
-        sentence = Variable(torch.LongTensor(sentence))
-        if torch.cuda.is_available():
-            sentence = sentence.cuda()
-        pred = model.forward(sentence)
-        pred = F.softmax(pred, dim=1)
-        pred_array.extend(pred.argmax(dim=1).cpu().numpy())
-        label_array.extend(label.numpy())
-    print(classification_report(label_array, pred_array))
-    return
-
-
 def train(dm_train_set, dm_test_set):
     torch.manual_seed(1)
 
@@ -198,7 +177,7 @@ def train(dm_train_set, dm_test_set):
 
     model = EmbeddingE2EModeler(dm_train_set.vocab_size(), EMBEDDING_DIM)
     print(model)
-    # init_weight = np.loadtxt("./tmp/weights.txt")
+    # init_weight = np.loadtxt("./tmp/we_weights.txt")
     # model.init_emb(init_weight)
     if torch.cuda.is_available():
         print("CUDA : On")
@@ -206,6 +185,10 @@ def train(dm_train_set, dm_test_set):
     else:
         print("CUDA : Off")
     optimizer = optim.Adam(model.parameters(), lr=1e-4, betas=(0.9, 0.99))
+
+    logging = False
+    if logging:
+        writer = SummaryWriter()
 
     for epoch in range(epoch_num):
         for batch_idx, (sentence, label) in enumerate(dm_dataloader):
@@ -224,18 +207,20 @@ def train(dm_train_set, dm_test_set):
             loss.backward()
             optimizer.step()
 
-        pred_array = []
-        label_array = []
-        for batch_idx, (sentence, label) in enumerate(dm_test_dataloader):
-            sentence = Variable(torch.LongTensor(sentence))
-            if torch.cuda.is_available():
-                sentence = sentence.cuda()
-            pred = model.forward(sentence)
-            pred = F.softmax(pred, dim=1)
-            pred_array.extend(pred.argmax(dim=1).cpu().numpy())
-            label_array.extend(label.numpy())
-        print(classification_report(label_array, pred_array))
+        if logging:
+            result_dict = valid_util.validate(model, dm_test_set, dm_test_dataloader, mode='report')
+            writer.add_scalars('data/0-PRF', {
+                '0-Precision': result_dict['0']['precision'],
+                '0-Recall': result_dict['0']['recall'],
+                '0-F1-score': result_dict['0']['f1-score']
+            }, epoch)
+            writer.add_scalars('data/1-PRF', {
+                '1-Precision': result_dict['1']['precision'],
+                '1-Recall': result_dict['1']['recall'],
+                '1-F1-score': result_dict['1']['f1-score']
+            }, epoch)
+        print(valid_util.validate(model, dm_test_set, dm_test_dataloader, mode='output'))
 
         dm_valid_set = pickle.load(open('./tmp/e2e_valid_dataset.pkl', 'rb'))
-        validate(model, dm_valid_set)
+        print(valid_util.validate(model, dm_valid_set, mode='output'))
     return

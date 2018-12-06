@@ -9,7 +9,7 @@ import pickle
 import torch.utils.data as data
 from torch.autograd import Variable
 import torch.optim as optim
-from sklearn.metrics import classification_report
+import util.validation as valid_util
 from tensorboardX import SummaryWriter
 
 
@@ -43,11 +43,6 @@ class E2ECNNModeler(nn.Module):
 
     def embed(self, sentence):
         sent_emd = self.dynamic_embedding(sentence)
-        sent_emd = torch.sum(sent_emd, dim=1)
-        return sent_emd
-
-    def forward(self, sentence):
-        sent_emd = self.dynamic_embedding(sentence)
         sent_emd = sent_emd.permute(0, 2, 1)
         out = [conv(sent_emd) for conv in self.convs]
         out = torch.cat(out, dim=1).squeeze()
@@ -58,35 +53,16 @@ class E2ECNNModeler(nn.Module):
         out_ = torch.cat(out_, dim=1).squeeze()
 
         out = torch.cat([out, out_], dim=1)
+        return out
 
-        h1 = F.relu(self.fc1(out))
+    def forward(self, sentence):
+        sent_emd = self.embed(sentence)
+        h1 = F.relu(self.fc1(sent_emd))
         h1 = F.dropout(h1, p=0.5)
         h2 = F.relu(self.fc2(h1))
         h2 = F.dropout(h2, p=0.5)
         h3 = self.fc3(h2)
         return h3
-
-
-def validate(model, dm_test_set):
-    dm_dataloader = data.DataLoader(
-        dataset=dm_test_set,
-        batch_size=128,
-        shuffle=True,
-        drop_last=False,
-        num_workers=8
-    )
-    pred_array = []
-    label_array = []
-    for batch_idx, (sentence, label) in enumerate(dm_dataloader):
-        sentence = Variable(torch.LongTensor(sentence))
-        if torch.cuda.is_available():
-            sentence = sentence.cuda()
-        pred = model.forward(sentence)
-        pred = F.softmax(pred, dim=1)
-        pred_array.extend(pred.argmax(dim=1).cpu().numpy())
-        label_array.extend(label.numpy())
-    print(classification_report(label_array, pred_array))
-    return
 
 
 def train(dm_train_set, dm_test_set):
@@ -110,7 +86,7 @@ def train(dm_train_set, dm_test_set):
     dm_test_dataloader = data.DataLoader(
         dataset=dm_test_set,
         batch_size=batch_size,
-        shuffle=True,
+        shuffle=False,
         drop_last=False,
         num_workers=8
     )
@@ -179,30 +155,20 @@ def train(dm_train_set, dm_test_set):
             # loss = embedding_loss
 
             if batch_idx % 1000 == 0:
-                print('epoch: %d batch %d : loss: %4.6f embed-loss: %4.6f class-loss: %4.6f'
-                      % (epoch, batch_idx, loss.item(), embedding_loss.item(), classify_loss.item()))
+                accuracy = valid_util.running_accuracy(final_pred, label, mask_)
+                print('epoch: %d batch %d : loss: %4.6f embed-loss: %4.6f class-loss: %4.6f accuracy: %4.6f'
+                      % (epoch, batch_idx, loss.item(), embedding_loss.item(), classify_loss.item(), accuracy))
                 if logging:
                     writer.add_scalars('data/loss', {
                         'Total Loss': loss,
                         'Embedding Loss': embedding_loss,
                         'Classify Loss': classify_loss
-                    }, epoch * 10 + batch_idx/1000)
+                    }, epoch * 10 + batch_idx // 1000)
             loss.backward()
             optimizer.step()
 
-        pred_array = []
-        label_array = []
-        for batch_idx, (sentence, label) in enumerate(dm_test_dataloader):
-            sentence = Variable(torch.LongTensor(sentence))
-            if torch.cuda.is_available():
-                sentence = sentence.cuda()
-            pred = model.forward(sentence)
-            pred = F.softmax(pred, dim=1)
-            pred_array.extend(pred.argmax(dim=1).cpu().numpy())
-            label_array.extend(label.numpy())
-
         if logging:
-            result_dict = classification_report(label_array, pred_array, output_dict=True)
+            result_dict = valid_util.validate(model, dm_test_set, dm_test_dataloader, mode='report')
             writer.add_scalars('data/0-PRF', {
                 '0-Precision': result_dict['0']['precision'],
                 '0-Recall': result_dict['0']['recall'],
@@ -213,10 +179,10 @@ def train(dm_train_set, dm_test_set):
                 '1-Recall': result_dict['1']['recall'],
                 '1-F1-score': result_dict['1']['f1-score']
             }, epoch)
-        print(classification_report(label_array, pred_array))
+        print(valid_util.validate(model, dm_test_set, dm_test_dataloader, mode='output'))
 
-        dm_valid_set = pickle.load(open('./tmp/e2e_we_valid_dataset.pkl', 'rb'))
-        validate(model, dm_valid_set)
+        # dm_valid_set = pickle.load(open('./tmp/e2e_we_valid_dataset.pkl', 'rb'))
+        # print(valid_util.validate(model, dm_valid_set, mode='output'))
 
     if logging:
         writer.close()

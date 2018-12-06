@@ -4,44 +4,70 @@
 import torch
 from torch import nn
 import torch.nn.functional as F
+import numpy as np
 import pickle
 import torch.utils.data as data
 from torch.autograd import Variable
 import torch.optim as optim
-import numpy as np
 import pandas as pd
 import collections
 from util.word_segment import word_segment
-import util.validation as valid_util
 from sklearn.model_selection import train_test_split
+import util.validation as valid_util
 from tensorboardX import SummaryWriter
 
 
-class EmbeddingE2EModeler(nn.Module):
-
-    def __init__(self, vocab_size, embedding_dim):
-        super(EmbeddingE2EModeler, self).__init__()
+class E2ECNNModeler(nn.Module):
+    def __init__(self, word_vocab_size, py_vocab_size, embedding_dim, feature_dim, window_sizes, max_len):
+        super(E2ECNNModeler, self).__init__()
         self.embedding_dim = embedding_dim
-        self.embedding = nn.Embedding(vocab_size, embedding_dim, padding_idx=0)
-        self.fc1 = nn.Linear(embedding_dim, 256, bias=True)
+        self.static_embedding = nn.Embedding(word_vocab_size, embedding_dim, padding_idx=0)
+        self.dynamic_embedding = nn.Embedding(word_vocab_size, embedding_dim, padding_idx=0)
+        self.py_embedding = nn.Embedding(py_vocab_size, embedding_dim, padding_idx=0)
+
+        self.convs = nn.ModuleList([
+                nn.Sequential(nn.Conv1d(in_channels=embedding_dim,
+                                        out_channels=feature_dim,
+                                        kernel_size=h),
+                              nn.ReLU(),
+                              nn.MaxPool1d(kernel_size=max_len-h+1))
+                for h in window_sizes])
+
+        self.fc1 = nn.Linear(feature_dim * len(window_sizes) * 3, 256, bias=True)
         self.fc2 = nn.Linear(256, 128, bias=True)
         self.fc3 = nn.Linear(128, 2, bias=True)
 
     def init_emb(self, pre_train_weight):
         init_range = 1 / self.embedding_dim
-        if pre_train_weight.shape == self.embedding.weight.data.shape:
+        if pre_train_weight.shape == self.dynamic_embedding.weight.data.shape:
             pre_train_weight[1:] = np.random.uniform(-init_range, init_range, pre_train_weight.shape[1])
             pre_train_weight = torch.FloatTensor(pre_train_weight)
-            self.embedding.weight.data = pre_train_weight
+            self.static_embedding = nn.Embedding.from_pretrained(pre_train_weight, freeze=True)
+            self.dynamic_embedding.weight.data = pre_train_weight
         return
 
-    def embed(self, sentence):
-        sent_emd = self.embedding(sentence)
-        sent_emd = torch.sum(sent_emd, dim=1)
-        return sent_emd
+    def embed(self, sentence, sent_py):
+        sent_emd = self.dynamic_embedding(sentence)
+        sent_emd = sent_emd.permute(0, 2, 1)
+        out = [conv(sent_emd) for conv in self.convs]
+        out = torch.cat(out, dim=1).squeeze()
 
-    def forward(self, sentence):
-        sent_emd = self.embed(sentence)
+        sent_static_emd = self.static_embedding(sentence)
+        sent_static_emd = sent_static_emd.permute(0, 2, 1)
+        out_ = [conv(sent_static_emd) for conv in self.convs]
+        out_ = torch.cat(out_, dim=1).squeeze()
+
+        py_emd = self.static_embedding(sent_py)
+        py_emd = py_emd.permute(0, 2, 1)
+        py_out = [conv(py_emd) for conv in self.convs]
+        py_out = torch.cat(py_out, dim=1).squeeze()
+
+        out = torch.cat([out, out_, py_out], dim=1)
+        return out
+
+    def forward(self, sentence, sent_py):
+        sent_emd = self.embed(sentence, sent_py)
+
         h1 = F.relu(self.fc1(sent_emd))
         h1 = F.dropout(h1, p=0.5)
         h2 = F.relu(self.fc2(h1))
@@ -83,6 +109,30 @@ class DmTrainDataset(data.Dataset):
             for word in counter:
                 self.word_to_ix[word] = len(self.word_to_ix)
 
+            print('building pinyin vocabulary...')
+            aggregate_samples = []
+            for episode_lvl_samples in dm_samples:
+                for sample in episode_lvl_samples:
+                    all_sentences.append(sample)
+                    aggregate_samples.extend(sample['pinyin'])
+            counter = {'UNK': 0}
+            counter.update(collections.Counter(aggregate_samples).most_common())
+            rare_words = set()
+            for word in counter:
+                if word != 'UNK' and counter[word] <= min_count:
+                    rare_words.add(word)
+            for word in rare_words:
+                counter['UNK'] += counter[word]
+                counter.pop(word)
+            print('%d pinyin words founded in vocabulary' % len(counter))
+
+            self.py_vocab_counter = counter
+            self.py_word_to_ix = {
+                'EPT': 0
+            }
+            for word in counter:
+                self.py_word_to_ix[word] = len(self.py_word_to_ix)
+
         print('building samples...')
         self.samples = []
         self.labels = []
@@ -92,6 +142,7 @@ class DmTrainDataset(data.Dataset):
 
                 playback_time = sample['playback_time']
                 content = sample['content']
+                py_content = sample['pinyin']
 
                 # update context_start_index
                 start_sample = episode_lvl_samples[context_start_index]
@@ -103,12 +154,16 @@ class DmTrainDataset(data.Dataset):
                 sample_ = episode_lvl_samples[it]
                 while sample_['playback_time'] <= playback_time + context_size:
                     if sample['raw_id'] != sample_['raw_id'] and \
-                            common_words(content, sample_['content']) >= min_common_words:
+                            common_words(py_content, sample_['pinyin']) >= min_common_words:
                         sentence_anchor = tokenize(sample['content'], max_len, self.word2ix)
                         sentence_positive = tokenize(sample_['content'], max_len, self.word2ix)
                         neg_sample = negative_sampling(sample, all_sentences)
                         sentence_negative = tokenize(neg_sample['content'], max_len, self.word2ix)
-                        self.samples.append((sentence_anchor, sentence_positive, sentence_negative))
+                        py_anchor = tokenize(sample['pinyin'], max_len, self.pyword2ix)
+                        py_positive = tokenize(sample_['pinyin'], max_len, self.pyword2ix)
+                        py_negative = tokenize(neg_sample['pinyin'], max_len, self.pyword2ix)
+                        self.samples.append((sentence_anchor, sentence_positive, sentence_negative,
+                                             py_anchor, py_positive, py_negative))
                         self.labels.append((sample['label'], sample_['label'], neg_sample['label']))
                     it += 1
                     if it >= len(episode_lvl_samples):
@@ -125,6 +180,12 @@ class DmTrainDataset(data.Dataset):
         else:
             return self.word_to_ix['UNK']
 
+    def pyword2ix(self, word):
+        if word in self.py_word_to_ix:
+            return self.py_word_to_ix[word]
+        else:
+            return self.py_word_to_ix['UNK']
+
     def __getitem__(self, index):
         sample = self.samples[index]
         label = self.labels[index]
@@ -136,6 +197,9 @@ class DmTrainDataset(data.Dataset):
             'anchor': sample[0],
             'pos': sample[1],
             'neg': sample[2],
+            'py_anchor': sample[3],
+            'py_pos': sample[4],
+            'py_neg': sample[5],
             'label': np.array([label[0], label[1], label[2]]),
             'mask': mask
         }
@@ -157,23 +221,24 @@ class DmTrainDataset(data.Dataset):
     def vocab_size(self):
         return len(self.word_to_ix)
 
+    def py_vocab_size(self):
+        return len(self.py_word_to_ix)
+
 
 class DmTestDataset(data.Dataset):
-    def __init__(self, dm_samples, max_len, dictionary):
+    def __init__(self, dm_samples, max_len, word_dictionary, py_dictionary):
         self.max_len = max_len
-        self.word_to_ix = dictionary
+        self.word_to_ix = word_dictionary
+        self.py_word_to_ix = py_dictionary
 
         print('building samples...')
         self.samples = []
         self.labels = []
         for sample in dm_samples:
             label = sample['label']
-            sample_ = np.zeros(max_len, dtype=int)
-            index = 0
-            for word in sample['content']:
-                sample_[index] = self.word2ix(word)
-                index += 1
-            self.samples.append(np.array(sample_))
+            sample_ = tokenize(sample['content'], max_len, self.word2ix)
+            py_sample_ = tokenize(sample['pinyin'], max_len, self.pyword2ix)
+            self.samples.append((sample_, py_sample_))
             self.labels.append(label)
 
         print('%d samples constructed.' % len(self.samples))
@@ -185,8 +250,21 @@ class DmTestDataset(data.Dataset):
         else:
             return self.word_to_ix['UNK']
 
+    def pyword2ix(self, word):
+        if word in self.py_word_to_ix:
+            return self.py_word_to_ix[word]
+        else:
+            return self.py_word_to_ix['UNK']
+
     def __getitem__(self, index):
-        return self.samples[index], self.labels[index]
+        sample = self.samples[index]
+        label = self.labels[index]
+        sample_dict = {
+            'words': sample[0],
+            'pinyin': sample[1],
+            'label': label
+        }
+        return sample_dict
 
     def __len__(self):
         return len(self.samples)
@@ -241,6 +319,7 @@ def build_dataset(danmaku_complete):
         for index, row in group_data.iterrows():
             content = row['content']
             words = word_segment(str(content))
+            pys = word_segment(str(content), mode='py')
             if len(words) > max_len:
                 max_len = len(words)
             if row['block_level'] >= 9:
@@ -254,6 +333,7 @@ def build_dataset(danmaku_complete):
             sample = {
                 'raw_id': row['tsc_raw_id'],
                 'content': words,
+                'pinyin': pys,
                 'playback_time': row['playback_time'],
                 'label': label
             }
@@ -280,7 +360,7 @@ def build_dataset(danmaku_complete):
 
     # build Dataset Class
     dm_train_set = DmTrainDataset(train_samples, min_count, max_len, context_size, common_words_min_count)
-    dm_test_set = DmTestDataset(test_samples, max_len, dm_train_set.word_to_ix)
+    dm_test_set = DmTestDataset(test_samples, max_len, dm_train_set.word_to_ix, dm_train_set.py_word_to_ix)
     return dm_train_set, dm_test_set
 
 
@@ -288,6 +368,9 @@ def train(dm_train_set, dm_test_set):
     torch.manual_seed(1)
 
     EMBEDDING_DIM = 200
+    feature_dim = 50
+    max_len = 49
+    windows_size = [2, 3, 4, 5]
     batch_size = 128
     epoch_num = 100
 
@@ -307,7 +390,7 @@ def train(dm_train_set, dm_test_set):
         num_workers=8
     )
 
-    model = EmbeddingE2EModeler(dm_train_set.vocab_size(), EMBEDDING_DIM)
+    model = E2ECNNModeler(dm_train_set.vocab_size(), dm_train_set.py_vocab_size(), EMBEDDING_DIM, feature_dim, windows_size, max_len)
     print(model)
     init_weight = np.loadtxt("./tmp/we_weights.txt")
     model.init_emb(init_weight)
@@ -317,12 +400,12 @@ def train(dm_train_set, dm_test_set):
     else:
         print("CUDA : Off")
 
-    embedding_params = list(map(id, model.embedding.parameters()))
+    embedding_params = list(map(id, model.dynamic_embedding.parameters()))
     other_params = filter(lambda p: id(p) not in embedding_params, model.parameters())
 
     optimizer = optim.Adam([
                 {'params': other_params},
-                {'params': model.embedding.parameters(), 'lr': 1e-4}
+                {'params': model.dynamic_embedding.parameters(), 'lr': 1e-4}
             ], lr=1e-3, betas=(0.9, 0.99))
 
     logging = False
@@ -334,6 +417,9 @@ def train(dm_train_set, dm_test_set):
             anchor = Variable(torch.LongTensor(sample_dict['anchor']))
             pos = Variable(torch.LongTensor(sample_dict['pos']))
             neg = Variable(torch.LongTensor(sample_dict['neg']))
+            py_anchor = Variable(torch.LongTensor(sample_dict['py_anchor']))
+            py_pos = Variable(torch.LongTensor(sample_dict['py_pos']))
+            py_neg = Variable(torch.LongTensor(sample_dict['py_neg']))
             label = Variable(torch.LongTensor(sample_dict['label']))
             mask = Variable(torch.LongTensor(sample_dict['mask']))
             mask_ = mask.type(torch.FloatTensor).view(-1)
@@ -341,6 +427,9 @@ def train(dm_train_set, dm_test_set):
                 anchor = anchor.cuda()
                 pos = pos.cuda()
                 neg = neg.cuda()
+                py_anchor = py_anchor.cuda()
+                py_pos = py_pos.cuda()
+                py_neg = py_neg.cuda()
                 label = label.cuda()
                 mask = mask.cuda()
                 mask_ = mask_.cuda()
@@ -351,9 +440,9 @@ def train(dm_train_set, dm_test_set):
             neg_embed = model.embed(neg)
             triplet_loss = nn.TripletMarginLoss(margin=10, p=2)
             embedding_loss = triplet_loss(anchor_embed, pos_embed, neg_embed)
-            anchor_pred = model.forward(anchor).unsqueeze(1)
-            pos_pred = model.forward(pos).unsqueeze(1)
-            neg_pred = model.forward(neg).unsqueeze(1)
+            anchor_pred = model.forward(anchor, py_anchor).unsqueeze(1)
+            pos_pred = model.forward(pos, py_pos).unsqueeze(1)
+            neg_pred = model.forward(neg, py_neg).unsqueeze(1)
             final_pred = torch.cat((anchor_pred, pos_pred, neg_pred), dim=1)
             final_pred = final_pred.view(1, -1, 2)
             final_pred = final_pred.squeeze()
@@ -379,7 +468,7 @@ def train(dm_train_set, dm_test_set):
                         'Total Loss': loss,
                         'Embedding Loss': embedding_loss,
                         'Classify Loss': classify_loss
-                    }, epoch * 10 + batch_idx // 1000)
+                    }, epoch * 10 + batch_idx/1000)
             loss.backward()
             optimizer.step()
 
@@ -397,8 +486,8 @@ def train(dm_train_set, dm_test_set):
             }, epoch)
         print(valid_util.validate(model, dm_test_set, dm_test_dataloader, mode='output'))
 
-        dm_valid_set = pickle.load(open('./tmp/e2e_we_valid_dataset.pkl', 'rb'))
-        print(valid_util.validate(model, dm_valid_set, mode='output'))
+        # dm_valid_set = pickle.load(open('./tmp/e2e_we_valid_dataset.pkl', 'rb'))
+        # validate(model, dm_valid_set)
 
     if logging:
         writer.close()

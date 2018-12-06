@@ -12,6 +12,7 @@ import model.tsc_embed as tsc_embed
 import model.e2eshallow as e2e
 import model.e2ewordembed as e2e_we
 import model.e2ecnn as e2e_cnn
+import model.e2epycnn as e2e_pycnn
 
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
@@ -34,11 +35,14 @@ def preprocess(output_file):
     # dm_train_set, dm_test_set = e2e.build_dataset(danmaku_complete)
 
     # e2e_word embedding model
-    dm_train_set, dm_test_set = e2e_we.build_dataset(danmaku_complete)
+    # dm_train_set, dm_test_set = e2e_we.build_dataset(danmaku_complete)
+
+    # e2e_py_word embedding model
+    dm_train_set, dm_test_set = e2e_pycnn.build_dataset(danmaku_complete)
 
     # pickle.dump(dm_set, open(output_file, 'wb'))
-    pickle.dump(dm_train_set, open('./tmp/e2e_we_train_dataset.pkl', 'wb'))
-    pickle.dump(dm_test_set, open('./tmp/e2e_we_test_dataset.pkl', 'wb'))
+    pickle.dump(dm_train_set, open('./tmp/e2e_pycnn_train_dataset.pkl', 'wb'))
+    pickle.dump(dm_test_set, open('./tmp/e2e_pycnn_test_dataset.pkl', 'wb'))
 
 
 if __name__ == "__main__":
@@ -58,3 +62,4 @@ if __name__ == "__main__":
     # e2e.train(train_set, test_set)
     # e2e_we.train(train_set, test_set)
     e2e_cnn.train(train_set, test_set)
+    # e2e_pycnn.train(train_set, test_set)
