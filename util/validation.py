@@ -8,7 +8,7 @@ from torch.autograd import Variable
 from sklearn.metrics import classification_report
 
 
-def validate(model, dm_test_set, dataloader=None, mode='acc'):
+def validate(model, dm_test_set, dataloader=None, mode='acc', py=False):
     if dataloader is None:
         dm_dataloader = data.DataLoader(
             dataset=dm_test_set,
@@ -21,14 +21,21 @@ def validate(model, dm_test_set, dataloader=None, mode='acc'):
         dm_dataloader = dataloader
     pred_array = []
     label_array = []
-    for batch_idx, (sentence, label) in enumerate(dm_dataloader):
-        sentence = Variable(torch.LongTensor(sentence))
+    for batch_idx, sample_dict in enumerate(dm_dataloader):
+        sentence = Variable(torch.LongTensor(sample_dict['sentence']))
         if torch.cuda.is_available():
             sentence = sentence.cuda()
-        pred = model.forward(sentence)
+        if py:
+            pinyin = Variable(torch.LongTensor(sample_dict['pinyin']))
+            if torch.cuda.is_available():
+                pinyin = pinyin.cuda()
+            pred = model.forward(sentence, pinyin)
+        else:
+            pred = model.forward(sentence)
+
         pred = F.softmax(pred, dim=1)
         pred_array.extend(pred.argmax(dim=1).cpu().numpy())
-        label_array.extend(label.numpy())
+        label_array.extend(sample_dict['label'].numpy())
 
         pred_tensor = torch.LongTensor(pred_array)
         label_tensor = torch.LongTensor(label_array)

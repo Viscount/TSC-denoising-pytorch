@@ -169,14 +169,9 @@ class DmTestDataset(data.Dataset):
         self.labels = []
         for sample in dm_samples:
             label = sample['label']
-            sample_ = np.zeros(max_len, dtype=int)
-            index = 0
-            for word in sample['content']:
-                sample_[index] = self.word2ix(word)
-                index += 1
-            self.samples.append(np.array(sample_))
+            sample_ = tokenize(sample['content'], max_len, self.word2ix)
+            self.samples.append((sample['raw_id'], np.array(sample_)))
             self.labels.append(label)
-
         print('%d samples constructed.' % len(self.samples))
         return
 
@@ -187,7 +182,14 @@ class DmTestDataset(data.Dataset):
             return self.word_to_ix['UNK']
 
     def __getitem__(self, index):
-        return self.samples[index], self.labels[index]
+        sample = self.samples[index]
+        label = self.labels[index]
+        sample_dict = {
+            'raw_id': sample[0],
+            'sentence': sample[1],
+            'label': label
+        }
+        return sample_dict
 
     def __len__(self):
         return len(self.samples)

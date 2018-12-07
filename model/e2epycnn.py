@@ -238,7 +238,7 @@ class DmTestDataset(data.Dataset):
             label = sample['label']
             sample_ = tokenize(sample['content'], max_len, self.word2ix)
             py_sample_ = tokenize(sample['pinyin'], max_len, self.pyword2ix)
-            self.samples.append((sample_, py_sample_))
+            self.samples.append((sample['raw_id'], sample_, py_sample_))
             self.labels.append(label)
 
         print('%d samples constructed.' % len(self.samples))
@@ -260,8 +260,9 @@ class DmTestDataset(data.Dataset):
         sample = self.samples[index]
         label = self.labels[index]
         sample_dict = {
-            'words': sample[0],
-            'pinyin': sample[1],
+            'raw_id': sample[0],
+            'sentence': sample[1],
+            'pinyin': sample[2],
             'label': label
         }
         return sample_dict
@@ -341,8 +342,8 @@ def build_dataset(danmaku_complete):
         samples.append(episode_lvl_samples)
 
     # train-test split
-    pos_train, pos_test = train_test_split(list(pos_label_set), test_size=0.25, shuffle=True)
-    neg_tran, neg_test = train_test_split(list(neg_label_set), test_size=0.25, shuffle=True)
+    pos_train, pos_test = train_test_split(list(pos_label_set), test_size=0.25, shuffle=True, random_state=42)
+    neg_tran, neg_test = train_test_split(list(neg_label_set), test_size=0.25, shuffle=True, random_state=42)
     test_select = set()
     test_select.update(pos_test)
     test_select.update(neg_test)
@@ -370,7 +371,7 @@ def train(dm_train_set, dm_test_set):
     EMBEDDING_DIM = 200
     feature_dim = 50
     max_len = 49
-    windows_size = [2, 3, 4, 5]
+    windows_size = [1, 2, 3, 4]
     batch_size = 128
     epoch_num = 100
 

@@ -10,6 +10,7 @@ import torch.utils.data as data
 from torch.autograd import Variable
 import torch.optim as optim
 import util.validation as valid_util
+import util.strategy as stg
 from tensorboardX import SummaryWriter
 
 
@@ -71,7 +72,7 @@ def train(dm_train_set, dm_test_set):
     EMBEDDING_DIM = 200
     feature_dim = 50
     max_len = 49
-    windows_size = [2, 3, 4, 5]
+    windows_size = [1, 2, 3, 4]
     batch_size = 128
     epoch_num = 100
 
@@ -109,7 +110,7 @@ def train(dm_train_set, dm_test_set):
                 {'params': model.dynamic_embedding.parameters(), 'lr': 1e-4}
             ], lr=1e-3, betas=(0.9, 0.99))
 
-    logging = False
+    logging = True
     if logging:
         writer = SummaryWriter()
 
@@ -133,7 +134,7 @@ def train(dm_train_set, dm_test_set):
             anchor_embed = model.embed(anchor)
             pos_embed = model.embed(pos)
             neg_embed = model.embed(neg)
-            triplet_loss = nn.TripletMarginLoss(margin=10, p=2)
+            triplet_loss = nn.TripletMarginLoss(margin=20, p=2)
             embedding_loss = triplet_loss(anchor_embed, pos_embed, neg_embed)
             anchor_pred = model.forward(anchor).unsqueeze(1)
             pos_pred = model.forward(pos).unsqueeze(1)
@@ -149,7 +150,7 @@ def train(dm_train_set, dm_test_set):
             classify_loss = classify_loss.mul(mask_)
             classify_loss = classify_loss.sum() / mask_.sum()
 
-            alpha = 0.5
+            alpha = stg.dynamic_alpha(embedding_loss, classify_loss)
             loss = alpha * embedding_loss + (1-alpha) * classify_loss
             # loss = classify_loss
             # loss = embedding_loss
@@ -178,6 +179,11 @@ def train(dm_train_set, dm_test_set):
                 '1-Precision': result_dict['1']['precision'],
                 '1-Recall': result_dict['1']['recall'],
                 '1-F1-score': result_dict['1']['f1-score']
+            }, epoch)
+            writer.add_scalars('data/avg-PRF', {
+                'avg-Precision': result_dict['weighted avg']['precision'],
+                'avg-Recall': result_dict['weighted avg']['recall'],
+                'avg-F1-score': result_dict['weighted avg']['f1-score']
             }, epoch)
         print(valid_util.validate(model, dm_test_set, dm_test_dataloader, mode='output'))
 

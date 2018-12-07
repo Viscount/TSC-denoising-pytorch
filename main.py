@@ -18,7 +18,7 @@ import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 
-def preprocess(output_file):
+def preprocess():
     # load data from csv
     # seasons = pd.read_csv("./data/bangumi.csv", delimiter=",", encoding="utf-8")
     # episodes = pd.read_csv("./data/episode.csv", delimiter=",", encoding="utf-8")
@@ -40,19 +40,18 @@ def preprocess(output_file):
     # e2e_py_word embedding model
     dm_train_set, dm_test_set = e2e_pycnn.build_dataset(danmaku_complete)
 
-    # pickle.dump(dm_set, open(output_file, 'wb'))
+    # pickle.dump(dm_set, open('./tmp/skip_gram_dataset.pkl', 'wb'))
     pickle.dump(dm_train_set, open('./tmp/e2e_pycnn_train_dataset.pkl', 'wb'))
     pickle.dump(dm_test_set, open('./tmp/e2e_pycnn_test_dataset.pkl', 'wb'))
 
 
 if __name__ == "__main__":
-    dataset_file = './tmp/tsc_dataset.pkl'
-    # preprocess(dataset_file)
+    # preprocess()
 
     # build dataset
     # dataset = pickle.load(open(dataset_file, 'rb'))
-    train_set = pickle.load(open('./tmp/e2e_we_train_dataset.pkl', 'rb'))
-    test_set = pickle.load(open('./tmp/e2e_we_test_dataset.pkl', 'rb'))
+    train_set = pickle.load(open('./tmp/e2e_pycnn_train_dataset.pkl', 'rb'))
+    test_set = pickle.load(open('./tmp/e2e_pycnn_test_dataset.pkl', 'rb'))
     print(type(train_set))
     print(type(test_set))
 
