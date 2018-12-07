@@ -398,10 +398,15 @@ def train(dm_train_set, dm_test_set):
                 '1-Recall': result_dict['1']['recall'],
                 '1-F1-score': result_dict['1']['f1-score']
             }, epoch)
-        print(valid_util.validate(model, dm_test_set, dm_test_dataloader, mode='output'))
+            writer.add_scalars('data/avg-PRF', {
+                'avg-Precision': result_dict['weighted avg']['precision'],
+                'avg-Recall': result_dict['weighted avg']['recall'],
+                'avg-F1-score': result_dict['weighted avg']['f1-score']
+            }, epoch)
+        valid_util.validate(model, dm_test_set, dm_test_dataloader, mode='output')
 
         dm_valid_set = pickle.load(open('./tmp/e2e_we_valid_dataset.pkl', 'rb'))
-        print(valid_util.validate(model, dm_valid_set, mode='output'))
+        valid_util.validate(model, dm_valid_set, mode='output')
 
     if logging:
         writer.close()

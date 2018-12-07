@@ -8,7 +8,7 @@ from torch.autograd import Variable
 from sklearn.metrics import classification_report
 
 
-def validate(model, dm_test_set, dataloader=None, mode='acc', py=False):
+def validate(model, dm_test_set, dataloader=None, mode='acc', py=False, pred_history=None):
     if dataloader is None:
         dm_dataloader = data.DataLoader(
             dataset=dm_test_set,
@@ -19,6 +19,7 @@ def validate(model, dm_test_set, dataloader=None, mode='acc', py=False):
         )
     else:
         dm_dataloader = dataloader
+    id_array = []
     pred_array = []
     label_array = []
     for batch_idx, sample_dict in enumerate(dm_dataloader):
@@ -36,6 +37,7 @@ def validate(model, dm_test_set, dataloader=None, mode='acc', py=False):
         pred = F.softmax(pred, dim=1)
         pred_array.extend(pred.argmax(dim=1).cpu().numpy())
         label_array.extend(sample_dict['label'].numpy())
+        id_array.extend(sample_dict['raw_id'].numpy())
 
         pred_tensor = torch.LongTensor(pred_array)
         label_tensor = torch.LongTensor(label_array)
@@ -47,9 +49,27 @@ def validate(model, dm_test_set, dataloader=None, mode='acc', py=False):
         report_dict = classification_report(label_array, pred_array, output_dict=True)
         report_dict['accuracy'] = accuracy
         return report_dict
+    elif mode == 'detail':
+        pred_dict = dict()
+        for index in range(len(id_array)):
+            pred_dict[id_array[index]] = pred_array[index]
+        if pred_history is None:
+            history = dict()
+            for raw_id in pred_dict:
+                history[raw_id] = [pred_dict[raw_id]]
+        else:
+            history = pred_history
+            for raw_id in pred_dict:
+                history_ = history[raw_id]
+                history_.append(pred_dict[raw_id])
+                history[raw_id] = history_
+        print('Test Accuracy: %4.6f' % accuracy)
+        print(classification_report(label_array, pred_array, digits=4))
+        return history
     else:
         print('Test Accuracy: %4.6f' % accuracy)
-        return classification_report(label_array, pred_array, digits=4)
+        print(classification_report(label_array, pred_array, digits=4))
+        return
 
 
 def running_accuracy(pred, label, mask=None):

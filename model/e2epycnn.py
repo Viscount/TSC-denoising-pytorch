@@ -14,6 +14,7 @@ import collections
 from util.word_segment import word_segment
 from sklearn.model_selection import train_test_split
 import util.validation as valid_util
+import util.strategy as stg
 from tensorboardX import SummaryWriter
 
 
@@ -436,9 +437,9 @@ def train(dm_train_set, dm_test_set):
                 mask_ = mask_.cuda()
 
             optimizer.zero_grad()
-            anchor_embed = model.embed(anchor)
-            pos_embed = model.embed(pos)
-            neg_embed = model.embed(neg)
+            anchor_embed = model.embed(anchor, py_anchor)
+            pos_embed = model.embed(pos, py_pos)
+            neg_embed = model.embed(neg, py_neg)
             triplet_loss = nn.TripletMarginLoss(margin=10, p=2)
             embedding_loss = triplet_loss(anchor_embed, pos_embed, neg_embed)
             anchor_pred = model.forward(anchor, py_anchor).unsqueeze(1)
@@ -455,7 +456,7 @@ def train(dm_train_set, dm_test_set):
             classify_loss = classify_loss.mul(mask_)
             classify_loss = classify_loss.sum() / mask_.sum()
 
-            alpha = 0.5
+            alpha = stg.dynamic_alpha(embedding_loss, classify_loss)
             loss = alpha * embedding_loss + (1-alpha) * classify_loss
             # loss = classify_loss
             # loss = embedding_loss
@@ -469,12 +470,12 @@ def train(dm_train_set, dm_test_set):
                         'Total Loss': loss,
                         'Embedding Loss': embedding_loss,
                         'Classify Loss': classify_loss
-                    }, epoch * 10 + batch_idx/1000)
+                    }, epoch * 10 + batch_idx // 1000)
             loss.backward()
             optimizer.step()
 
         if logging:
-            result_dict = valid_util.validate(model, dm_test_set, dm_test_dataloader, mode='report')
+            result_dict = valid_util.validate(model, dm_test_set, dm_test_dataloader, mode='report', py=True)
             writer.add_scalars('data/0-PRF', {
                 '0-Precision': result_dict['0']['precision'],
                 '0-Recall': result_dict['0']['recall'],
@@ -485,7 +486,12 @@ def train(dm_train_set, dm_test_set):
                 '1-Recall': result_dict['1']['recall'],
                 '1-F1-score': result_dict['1']['f1-score']
             }, epoch)
-        print(valid_util.validate(model, dm_test_set, dm_test_dataloader, mode='output'))
+            writer.add_scalars('data/avg-PRF', {
+                'avg-Precision': result_dict['weighted avg']['precision'],
+                'avg-Recall': result_dict['weighted avg']['recall'],
+                'avg-F1-score': result_dict['weighted avg']['f1-score']
+            }, epoch)
+        valid_util.validate(model, dm_test_set, dm_test_dataloader, mode='output', py=True)
 
         # dm_valid_set = pickle.load(open('./tmp/e2e_we_valid_dataset.pkl', 'rb'))
         # validate(model, dm_valid_set)
