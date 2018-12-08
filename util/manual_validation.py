@@ -91,4 +91,5 @@ if __name__ == '__main__':
     # print(type(valid_set))
     # pickle.dump(valid_set, open('../tmp/e2e_valid_dataset.pkl', 'wb'))
     test_dataset = pickle.load(open('../tmp/e2e_pycnn_test_dataset.pkl', 'rb'))
-    get_test_detail(danmaku_selected, test_dataset)
+    pred_history = pickle.load(open('../tmp/e2e_cnn_history.pkl', 'rb'))
+    get_test_detail(danmaku_selected, test_dataset, pred_history)

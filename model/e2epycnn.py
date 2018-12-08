@@ -47,6 +47,14 @@ class E2ECNNModeler(nn.Module):
             self.dynamic_embedding.weight.data = pre_train_weight
         return
 
+    def init_py_emb(self, pre_train_weight):
+        init_range = 1 / self.embedding_dim
+        if pre_train_weight.shape == self.py_embedding.weight.data.shape:
+            pre_train_weight[1:] = np.random.uniform(-init_range, init_range, pre_train_weight.shape[1])
+            pre_train_weight = torch.FloatTensor(pre_train_weight)
+            self.py_embedding.weight.data = pre_train_weight
+        return
+
     def embed(self, sentence, sent_py):
         sent_emd = self.dynamic_embedding(sentence)
         sent_emd = sent_emd.permute(0, 2, 1)
@@ -396,6 +404,8 @@ def train(dm_train_set, dm_test_set):
     print(model)
     init_weight = np.loadtxt("./tmp/we_weights.txt")
     model.init_emb(init_weight)
+    init_weight = np.loadtxt("./tmp/py_weights.txt")
+    model.init_py_emb(init_weight)
     if torch.cuda.is_available():
         print("CUDA : On")
         model.cuda()

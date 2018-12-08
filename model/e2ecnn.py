@@ -74,7 +74,7 @@ def train(dm_train_set, dm_test_set):
     max_len = 49
     windows_size = [1, 2, 3, 4]
     batch_size = 128
-    epoch_num = 100
+    epoch_num = 20
 
     dm_dataloader = data.DataLoader(
         dataset=dm_train_set,
@@ -113,6 +113,8 @@ def train(dm_train_set, dm_test_set):
     logging = True
     if logging:
         writer = SummaryWriter()
+
+    history = None
 
     for epoch in range(epoch_num):
         for batch_idx, sample_dict in enumerate(dm_dataloader):
@@ -185,7 +187,8 @@ def train(dm_train_set, dm_test_set):
                 'avg-Recall': result_dict['weighted avg']['recall'],
                 'avg-F1-score': result_dict['weighted avg']['f1-score']
             }, epoch)
-        valid_util.validate(model, dm_test_set, dm_test_dataloader, mode='output')
+        history = valid_util.validate(model, dm_test_set, dm_test_dataloader, mode='detail', pred_history=history)
+        pickle.dump(history, open('./tmp/e2e_cnn_history.pkl', 'wb'))
 
         # dm_valid_set = pickle.load(open('./tmp/e2e_we_valid_dataset.pkl', 'rb'))
         # valid_util.validate(model, dm_valid_set, mode='output')
