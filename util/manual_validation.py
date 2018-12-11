@@ -48,7 +48,7 @@ def build_valid_set(all_danmakus, select_dict):
     return test_set
 
 
-def get_test_detail(dataframe, test_dataset, pred_history=None):
+def get_test_detail(dataframe, test_dataset, pred_history=None, history_len=0):
     dataloader = data.DataLoader(
         dataset=test_dataset,
         batch_size=128,
@@ -70,6 +70,13 @@ def get_test_detail(dataframe, test_dataset, pred_history=None):
                 'tsc_raw_id': row['tsc_raw_id'],
                 'content': row['content']
             }
+
+    if pred_history is not None:
+        if history_len == 0:
+            for history in pred_history:
+                if len(history) > history_len:
+                    history_len = len(history)
+
     test_list = []
     for index in range(len(id_array)):
         raw_id = id_array[index]
@@ -77,9 +84,23 @@ def get_test_detail(dataframe, test_dataset, pred_history=None):
         data_dict = test_dict[raw_id]
         data_dict['label'] = label
         if pred_history is not None:
-            data_dict['history'] = pred_history[raw_id]
+            tot_accuracy = 0
+            for index in range(len(pred_history)):
+                his_key_name = 'history' + str(index)
+                acc_key_name = 'accuracy' + str(index)
+                history = pred_history[index][raw_id][:history_len]
+                data_dict[his_key_name] = history
+
+                hit_count = 0
+                for index in range(len(history)):
+                    if history[index] == label:
+                        hit_count += 1
+                data_dict[acc_key_name] = hit_count * 1.0 / len(history)
+                tot_accuracy += data_dict[acc_key_name]
+            data_dict['tot_accuracy'] = tot_accuracy / len(pred_history)
         test_list.append(data_dict)
     df = pd.DataFrame(test_list)
+    df = df.sort_values(by='tot_accuracy')
     df.to_csv('../tmp/pycnn_testset.csv', sep='\t', index=False)
     return
 
@@ -91,5 +112,8 @@ if __name__ == '__main__':
     # print(type(valid_set))
     # pickle.dump(valid_set, open('../tmp/e2e_valid_dataset.pkl', 'wb'))
     test_dataset = pickle.load(open('../tmp/e2e_pycnn_test_dataset.pkl', 'rb'))
-    pred_history = pickle.load(open('../tmp/e2e_cnn_history.pkl', 'rb'))
-    get_test_detail(danmaku_selected, test_dataset, pred_history)
+    we_pred_history = pickle.load(open('../tmp/e2e_we_history.pkl', 'rb'))
+    cnn_pred_history = pickle.load(open('../tmp/e2e_cnn_history.pkl', 'rb'))
+    pycnn_pred_history = pickle.load(open('../tmp/e2e_pycnn_history.pkl', 'rb'))
+    pred_history = [we_pred_history, cnn_pred_history, pycnn_pred_history]
+    get_test_detail(danmaku_selected, test_dataset, pred_history, history_len=9)
