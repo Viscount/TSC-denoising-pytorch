@@ -25,6 +25,7 @@ class E2ECNNModeler(nn.Module):
                 nn.Sequential(nn.Conv1d(in_channels=embedding_dim,
                                         out_channels=feature_dim,
                                         kernel_size=h),
+                              nn.BatchNorm1d(feature_dim, momentum=0.5),
                               nn.ReLU(),
                               nn.MaxPool1d(kernel_size=max_len-h+1))
                 for h in window_sizes])
@@ -136,7 +137,7 @@ def train(dm_train_set, dm_test_set):
             anchor_embed = model.embed(anchor)
             pos_embed = model.embed(pos)
             neg_embed = model.embed(neg)
-            triplet_loss = nn.TripletMarginLoss(margin=20, p=2)
+            triplet_loss = nn.TripletMarginLoss(margin=10, p=2)
             embedding_loss = triplet_loss(anchor_embed, pos_embed, neg_embed)
             anchor_pred = model.forward(anchor).unsqueeze(1)
             pos_pred = model.forward(pos).unsqueeze(1)
@@ -150,7 +151,10 @@ def train(dm_train_set, dm_test_set):
             label = label.view(-1)
             classify_loss = cross_entropy(final_pred, label)
             classify_loss = classify_loss.mul(mask_)
-            classify_loss = classify_loss.sum() / mask_.sum()
+            if mask_.sum() > 0:
+                classify_loss = classify_loss.sum() / mask_.sum()
+            else:
+                classify_loss = classify_loss.sum()
 
             alpha = stg.dynamic_alpha(embedding_loss, classify_loss)
             loss = alpha * embedding_loss + (1-alpha) * classify_loss
@@ -162,7 +166,7 @@ def train(dm_train_set, dm_test_set):
                 print('epoch: %d batch %d : loss: %4.6f embed-loss: %4.6f class-loss: %4.6f accuracy: %4.6f'
                       % (epoch, batch_idx, loss.item(), embedding_loss.item(), classify_loss.item(), accuracy))
                 if logging:
-                    writer.add_scalars('data/loss', {
+                    writer.add_scalars('cnn_data/loss', {
                         'Total Loss': loss,
                         'Embedding Loss': embedding_loss,
                         'Classify Loss': classify_loss
@@ -172,21 +176,17 @@ def train(dm_train_set, dm_test_set):
 
         if logging:
             result_dict = valid_util.validate(model, dm_test_set, dm_test_dataloader, mode='report')
-            writer.add_scalars('data/0-PRF', {
+            writer.add_scalars('cnn_data/0-PRF', {
                 '0-Precision': result_dict['0']['precision'],
                 '0-Recall': result_dict['0']['recall'],
                 '0-F1-score': result_dict['0']['f1-score']
             }, epoch)
-            writer.add_scalars('data/1-PRF', {
+            writer.add_scalars('cnn_data/1-PRF', {
                 '1-Precision': result_dict['1']['precision'],
                 '1-Recall': result_dict['1']['recall'],
                 '1-F1-score': result_dict['1']['f1-score']
             }, epoch)
-            writer.add_scalars('data/avg-PRF', {
-                'avg-Precision': result_dict['weighted avg']['precision'],
-                'avg-Recall': result_dict['weighted avg']['recall'],
-                'avg-F1-score': result_dict['weighted avg']['f1-score']
-            }, epoch)
+            writer.add_scalar('cnn_data/accuracy', result_dict['accuracy'], epoch)
         history = valid_util.validate(model, dm_test_set, dm_test_dataloader, mode='detail', pred_history=history)
         pickle.dump(history, open('./tmp/e2e_cnn_history.pkl', 'wb'))
 

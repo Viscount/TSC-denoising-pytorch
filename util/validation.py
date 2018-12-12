@@ -80,6 +80,8 @@ def running_accuracy(pred, label, mask=None):
         return hit_count.sum().item() * 1.0 / hit_count.shape[0]
     else:
         total_count = mask.sum().item()
+        if total_count == 0:
+            return 0.0
         hit = 0
         for i in range(mask.shape[0]):
             if mask[i] == 1:
