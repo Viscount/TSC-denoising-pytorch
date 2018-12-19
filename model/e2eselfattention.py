@@ -97,7 +97,7 @@ def train(dm_train_set, dm_test_set):
     feature_dim = 50
     max_len = 49
     batch_size = 128
-    epoch_num = 20
+    epoch_num = 30
 
     dm_dataloader = data.DataLoader(
         dataset=dm_train_set,

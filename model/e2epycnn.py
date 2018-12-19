@@ -428,6 +428,11 @@ def train(dm_train_set, dm_test_set):
     history = None
 
     for epoch in range(epoch_num):
+
+        if (epoch+1) % 3 == 0:
+            for param_group in optimizer.param_groups:
+                param_group['lr'] = param_group['lr'] * 0.5
+
         for batch_idx, sample_dict in enumerate(dm_dataloader):
             anchor = Variable(torch.LongTensor(sample_dict['anchor']))
             pos = Variable(torch.LongTensor(sample_dict['pos']))
@@ -462,10 +467,10 @@ def train(dm_train_set, dm_test_set):
             final_pred = final_pred.view(1, -1, 2)
             final_pred = final_pred.squeeze()
 
-            cross_entropy = nn.CrossEntropyLoss(reduction='none')
+            cross_entropy = nn.NLLLoss(reduction='none')
             label = label.mul(mask)
             label = label.view(-1)
-            classify_loss = cross_entropy(final_pred, label)
+            classify_loss = cross_entropy(F.log_softmax(final_pred, dim=1), label)
             classify_loss = classify_loss.mul(mask_)
             if mask_.sum() > 0:
                 classify_loss = classify_loss.sum() / mask_.sum()

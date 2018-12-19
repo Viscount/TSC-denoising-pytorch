@@ -118,6 +118,11 @@ def train(dm_train_set, dm_test_set):
     history = None
 
     for epoch in range(epoch_num):
+
+        if (epoch+1) % 3 == 0:
+            for param_group in optimizer.param_groups:
+                param_group['lr'] = param_group['lr'] * 0.5
+
         for batch_idx, sample_dict in enumerate(dm_dataloader):
             anchor = Variable(torch.LongTensor(sample_dict['anchor']))
             pos = Variable(torch.LongTensor(sample_dict['pos']))
