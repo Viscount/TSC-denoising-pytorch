@@ -22,7 +22,7 @@ class E2ELSTMModeler(nn.Module):
 
         self.lstm = nn.LSTM(embedding_dim, hidden_size, batch_first=True, bidirectional=True)
 
-        self.fc1 = nn.Linear(hidden_size, 256, bias=True)
+        self.fc1 = nn.Linear(hidden_size*2, 256, bias=True)
         self.fc2 = nn.Linear(256, 128, bias=True)
         self.fc3 = nn.Linear(128, 2, bias=True)
 
@@ -89,10 +89,10 @@ def train(dm_train_set, dm_test_set):
 
     optimizer = optim.Adam([
                 {'params': other_params},
-                {'params': model.dynamic_embedding.parameters(), 'lr': 1e-4}
+                {'params': model.embedding.parameters(), 'lr': 1e-3}
             ], lr=1e-3, betas=(0.9, 0.99))
 
-    logging = True
+    logging = False
     if logging:
         writer = SummaryWriter()
 
