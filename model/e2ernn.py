@@ -14,13 +14,16 @@ import util.strategy as stg
 from tensorboardX import SummaryWriter
 
 
-class E2ELSTMModeler(nn.Module):
-    def __init__(self, vocab_size, embedding_dim, hidden_size, max_len):
-        super(E2ELSTMModeler, self).__init__()
+class E2ERNNModeler(nn.Module):
+    def __init__(self, vocab_size, embedding_dim, hidden_size, type):
+        super(E2ERNNModeler, self).__init__()
         self.embedding_dim = embedding_dim
         self.embedding = nn.Embedding(vocab_size, embedding_dim, padding_idx=0)
 
-        self.lstm = nn.LSTM(embedding_dim, hidden_size, batch_first=True, bidirectional=True)
+        if type == 'LSTM':
+            self.rnn = nn.LSTM(embedding_dim, hidden_size, batch_first=True, bidirectional=True)
+        else:
+            self.rnn = nn.GRU(embedding_dim, hidden_size, batch_first=True, bidirectional=True)
 
         self.fc1 = nn.Linear(hidden_size*2, 256, bias=True)
         self.fc2 = nn.Linear(256, 128, bias=True)
@@ -36,7 +39,7 @@ class E2ELSTMModeler(nn.Module):
 
     def embed(self, sentence):
         sent_emd = self.embedding(sentence)
-        output, h_n = self.lstm(sent_emd)
+        output, h_n = self.rnn(sent_emd)
         return output[:, -1, :]
 
     def forward(self, sentence):
@@ -57,6 +60,7 @@ def train(dm_train_set, dm_test_set):
     max_len = 49
     batch_size = 128
     epoch_num = 30
+    RNN_type = 'GRU'
 
     dm_dataloader = data.DataLoader(
         dataset=dm_train_set,
@@ -74,7 +78,7 @@ def train(dm_train_set, dm_test_set):
         num_workers=8
     )
 
-    model = E2ELSTMModeler(dm_train_set.vocab_size(), EMBEDDING_DIM, hidden_size, max_len)
+    model = E2ERNNModeler(dm_train_set.vocab_size(), EMBEDDING_DIM, hidden_size, RNN_type)
     print(model)
     init_weight = np.loadtxt("./tmp/we_weights.txt")
     model.init_emb(init_weight)
@@ -147,7 +151,7 @@ def train(dm_train_set, dm_test_set):
                 print('epoch: %d batch %d : loss: %4.6f embed-loss: %4.6f class-loss: %4.6f accuracy: %4.6f'
                       % (epoch, batch_idx, loss.item(), embedding_loss.item(), classify_loss.item(), accuracy))
                 if logging:
-                    writer.add_scalars('lstm_data/loss', {
+                    writer.add_scalars(RNN_type+'_data/loss', {
                         'Total Loss': loss,
                         'Embedding Loss': embedding_loss,
                         'Classify Loss': classify_loss
@@ -157,19 +161,19 @@ def train(dm_train_set, dm_test_set):
 
         if logging:
             result_dict = valid_util.validate(model, dm_test_set, dm_test_dataloader, mode='report')
-            writer.add_scalars('lstm_data/0-PRF', {
+            writer.add_scalars(RNN_type+'_data/0-PRF', {
                 '0-Precision': result_dict['0']['precision'],
                 '0-Recall': result_dict['0']['recall'],
                 '0-F1-score': result_dict['0']['f1-score']
             }, epoch)
-            writer.add_scalars('lstm_data/1-PRF', {
+            writer.add_scalars(RNN_type+'_data/1-PRF', {
                 '1-Precision': result_dict['1']['precision'],
                 '1-Recall': result_dict['1']['recall'],
                 '1-F1-score': result_dict['1']['f1-score']
             }, epoch)
-            writer.add_scalar('lstm_data/accuracy', result_dict['accuracy'], epoch)
+            writer.add_scalar(RNN_type+'_data/accuracy', result_dict['accuracy'], epoch)
         history = valid_util.validate(model, dm_test_set, dm_test_dataloader, mode='detail', pred_history=history)
-        pickle.dump(history, open('./tmp/e2e_lstm_history.pkl', 'wb'))
+        pickle.dump(history, open('./tmp/e2e_'+RNN_type+'_history.pkl', 'wb'))
 
         # dm_valid_set = pickle.load(open('./tmp/e2e_we_valid_dataset.pkl', 'rb'))
         # valid_util.validate(model, dm_valid_set, mode='output')
