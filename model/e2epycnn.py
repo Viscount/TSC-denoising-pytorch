@@ -18,10 +18,22 @@ import util.strategy as stg
 from tensorboardX import SummaryWriter
 
 
+class Gate(nn.Module):
+    def __init__(self, num, input_size):
+        super(Gate, self).__init__()
+        self.w = nn.Parameter(torch.ones(num, input_size))
+
+    def forward(self, x):
+        w_ = F.softmax(self.w, dim=0)
+        out = torch.sum(x*w_, dim=1)
+        return out
+
+
 class E2ECNNModeler(nn.Module):
-    def __init__(self, word_vocab_size, py_vocab_size, embedding_dim, feature_dim, window_sizes, max_len):
+    def __init__(self, word_vocab_size, py_vocab_size, embedding_dim, feature_dim, window_sizes, max_len, fusion_type='concat'):
         super(E2ECNNModeler, self).__init__()
         self.embedding_dim = embedding_dim
+        self.fusion_type = fusion_type
         self.static_embedding = nn.Embedding(word_vocab_size, embedding_dim, padding_idx=0)
         self.dynamic_embedding = nn.Embedding(word_vocab_size, embedding_dim, padding_idx=0)
         self.py_embedding = nn.Embedding(py_vocab_size, embedding_dim, padding_idx=0)
@@ -35,7 +47,11 @@ class E2ECNNModeler(nn.Module):
                               nn.MaxPool1d(kernel_size=max_len-h+1))
                 for h in window_sizes])
 
-        self.fc1 = nn.Linear(feature_dim * len(window_sizes) * 3, 256, bias=True)
+        if fusion_type == 'gate':
+            self.feature_gate = Gate(3, feature_dim * len(window_sizes))
+            self.fc1 = nn.Linear(feature_dim * len(window_sizes), 256, bias=True)
+        else:
+            self.fc1 = nn.Linear(3 * feature_dim * len(window_sizes), 256, bias=True)
         self.fc2 = nn.Linear(256, 128, bias=True)
         self.fc3 = nn.Linear(128, 2, bias=True)
 
@@ -72,8 +88,12 @@ class E2ECNNModeler(nn.Module):
         py_out = [conv(py_emd) for conv in self.convs]
         py_out = torch.cat(py_out, dim=1).squeeze()
 
-        out = torch.cat([out, out_, py_out], dim=1)
-        return out
+        if self.fusion_type == 'gate':
+            agg_out = torch.cat([out.unsqueeze(1), out_.unsqueeze(1), py_out.unsqueeze(1)], dim=1)
+            agg_out = self.feature_gate(agg_out)
+        else:
+            agg_out = torch.cat([out, out_, py_out], dim=1)
+        return agg_out
 
     def forward(self, sentence, sent_py):
         sent_emd = self.embed(sentence, sent_py)
@@ -383,7 +403,9 @@ def train(dm_train_set, dm_test_set):
     max_len = 49
     windows_size = [1, 2, 3, 4]
     batch_size = 128
-    epoch_num = 100
+    epoch_num = 50
+    fusion_type = 'gate'
+    log_name = 'pycnn_gate'
 
     dm_dataloader = data.DataLoader(
         dataset=dm_train_set,
@@ -396,12 +418,13 @@ def train(dm_train_set, dm_test_set):
     dm_test_dataloader = data.DataLoader(
         dataset=dm_test_set,
         batch_size=batch_size,
-        shuffle=True,
+        shuffle=False,
         drop_last=False,
         num_workers=8
     )
 
-    model = E2ECNNModeler(dm_train_set.vocab_size(), dm_train_set.py_vocab_size(), EMBEDDING_DIM, feature_dim, windows_size, max_len)
+    model = E2ECNNModeler(dm_train_set.vocab_size(), dm_train_set.py_vocab_size(),
+                          EMBEDDING_DIM, feature_dim, windows_size, max_len, fusion_type)
     print(model)
     init_weight = np.loadtxt("./tmp/we_weights.txt")
     model.init_emb(init_weight)
@@ -487,7 +510,7 @@ def train(dm_train_set, dm_test_set):
                 print('epoch: %d batch %d : loss: %4.6f embed-loss: %4.6f class-loss: %4.6f accuracy: %4.6f'
                       % (epoch, batch_idx, loss.item(), embedding_loss.item(), classify_loss.item(), accuracy))
                 if logging:
-                    writer.add_scalars('pycnn_data/loss', {
+                    writer.add_scalars(log_name+'_data/loss', {
                         'Total Loss': loss,
                         'Embedding Loss': embedding_loss,
                         'Classify Loss': classify_loss
@@ -497,17 +520,17 @@ def train(dm_train_set, dm_test_set):
 
         if logging:
             result_dict = valid_util.validate(model, dm_test_set, dm_test_dataloader, mode='report', py=True)
-            writer.add_scalars('pycnn_data/0-PRF', {
+            writer.add_scalars(log_name+'_data/0-PRF', {
                 '0-Precision': result_dict['0']['precision'],
                 '0-Recall': result_dict['0']['recall'],
                 '0-F1-score': result_dict['0']['f1-score']
             }, epoch)
-            writer.add_scalars('pycnn_data/1-PRF', {
+            writer.add_scalars(log_name+'_data/1-PRF', {
                 '1-Precision': result_dict['1']['precision'],
                 '1-Recall': result_dict['1']['recall'],
                 '1-F1-score': result_dict['1']['f1-score']
             }, epoch)
-            writer.add_scalar('pycnn_data/accuracy', result_dict['accuracy'], epoch)
+            writer.add_scalar(log_name+'_data/accuracy', result_dict['accuracy'], epoch)
         history = valid_util.validate(model, dm_test_set, dm_test_dataloader, mode='detail', py=True, pred_history=history)
         pickle.dump(history, open('./tmp/e2e_pycnn_history.pkl', 'wb'))
 

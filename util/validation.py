@@ -39,10 +39,10 @@ def validate(model, dm_test_set, dataloader=None, mode='acc', py=False, pred_his
         label_array.extend(sample_dict['label'].numpy())
         id_array.extend(sample_dict['raw_id'].numpy())
 
-        pred_tensor = torch.LongTensor(pred_array)
-        label_tensor = torch.LongTensor(label_array)
-        count = torch.eq(pred_tensor, label_tensor)
-        accuracy = count.sum().item() * 1.0 / count.shape[0]
+    pred_tensor = torch.LongTensor(pred_array)
+    label_tensor = torch.LongTensor(label_array)
+    count = torch.eq(pred_tensor, label_tensor)
+    accuracy = count.sum().item() * 1.0 / count.shape[0]
     if mode == 'acc':
         return accuracy
     elif mode == 'report':
