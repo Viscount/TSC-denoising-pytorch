@@ -9,10 +9,6 @@ import pickle
 import torch.utils.data as data
 from torch.autograd import Variable
 import torch.optim as optim
-import pandas as pd
-import collections
-from util.word_segment import word_segment
-from sklearn.model_selection import train_test_split
 import util.validation as valid_util
 import util.strategy as stg
 from tensorboardX import SummaryWriter
