@@ -4,48 +4,26 @@
 import torch
 from torch import nn
 import torch.nn.functional as F
-import pickle
 import numpy as np
+import pickle
 import torch.utils.data as data
 from torch.autograd import Variable
 import torch.optim as optim
 import util.validation as valid_util
 from tensorboardX import SummaryWriter
 
-
-class EmbeddingE2EModeler(nn.Module):
-
-    def __init__(self, vocab_size, embedding_dim):
-        super(EmbeddingE2EModeler, self).__init__()
-        self.embedding = nn.Embedding(vocab_size, embedding_dim, padding_idx=0)
-        self.fc1 = nn.Linear(embedding_dim, 256, bias=True)
-        self.fc2 = nn.Linear(256, 128, bias=True)
-        self.fc3 = nn.Linear(128, 2, bias=True)
-        self.embedding_dim = embedding_dim
-
-    def init_emb(self, pre_train_weight):
-        if pre_train_weight.shape == self.embedding.weight.data.shape:
-            pre_train_weight = torch.FloatTensor(pre_train_weight)
-            self.embedding.weight.data = pre_train_weight
-        return
-
-    def forward(self, sentence):
-        sent_emd = self.embedding(sentence)
-        sent_emd = torch.sum(sent_emd, dim=1)
-        h1 = F.relu(self.fc1(sent_emd))
-        h1 = F.dropout(h1, p=0.5)
-        h2 = F.relu(self.fc2(h1))
-        h2 = F.dropout(h2, p=0.5)
-        h3 = self.fc3(h2)
-        return h3
+from model.e2ecnn import E2ECNNModeler
 
 
 def train(dm_train_set, dm_test_set):
     torch.manual_seed(1)
 
     EMBEDDING_DIM = 200
+    feature_dim = 50
+    max_len = 49
+    windows_size = [1, 2, 3, 4]
     batch_size = 128
-    epoch_num = 150
+    epoch_num = 50
 
     dm_dataloader = data.DataLoader(
         dataset=dm_train_set,
@@ -63,23 +41,37 @@ def train(dm_train_set, dm_test_set):
         num_workers=8
     )
 
-    model = EmbeddingE2EModeler(dm_train_set.vocab_size(), EMBEDDING_DIM)
+    model = E2ECNNModeler(dm_train_set.vocab_size(), EMBEDDING_DIM, feature_dim, windows_size, max_len)
     print(model)
-    # init_weight = np.loadtxt("./tmp/unigram_weights.txt")
+    # init_weight = np.loadtxt("./tmp/we_weights.txt")
     # model.init_emb(init_weight)
     if torch.cuda.is_available():
         print("CUDA : On")
         model.cuda()
     else:
         print("CUDA : Off")
-    optimizer = optim.Adam(model.parameters(), lr=1e-4, betas=(0.9, 0.99))
+
+    embedding_params = list(map(id, model.dynamic_embedding.parameters()))
+    other_params = filter(lambda p: id(p) not in embedding_params, model.parameters())
+
+    optimizer = optim.Adam([
+                {'params': other_params},
+                {'params': model.dynamic_embedding.parameters(), 'lr': 1e-4}
+            ], lr=1e-3, betas=(0.9, 0.99))
 
     logging = True
     if logging:
-        log_name = 'straight_embed'
         writer = SummaryWriter()
+        log_name = 'Direct_CNN'
+
+    history = None
 
     for epoch in range(epoch_num):
+
+        if (epoch+1) % 3 == 0:
+            for param_group in optimizer.param_groups:
+                param_group['lr'] = param_group['lr'] * 0.5
+
         for batch_idx, sample_dict in enumerate(dm_dataloader):
             sentence = Variable(torch.LongTensor(sample_dict['sentence']))
             label = Variable(torch.LongTensor(sample_dict['label']))
@@ -89,8 +81,8 @@ def train(dm_train_set, dm_test_set):
 
             optimizer.zero_grad()
             pred = model.forward(sentence)
-            cross_entropy = nn.CrossEntropyLoss()
-            loss = cross_entropy(pred, label)
+            cross_entropy = nn.NLLLoss()
+            loss = cross_entropy(F.log_softmax(pred, dim=1), label)
             if batch_idx % 10 == 0:
                 accuracy = valid_util.running_accuracy(pred, label)
                 print('epoch: %d batch %d : loss: %4.6f accuracy: %4.6f' % (epoch, batch_idx, loss.item(), accuracy))

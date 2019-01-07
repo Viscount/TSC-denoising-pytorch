@@ -56,7 +56,7 @@ def train(dm_train_set, dm_test_set):
     torch.manual_seed(1)
 
     EMBEDDING_DIM = 200
-    hidden_size = 50
+    hidden_size = 100
     max_len = 49
     batch_size = 128
     epoch_num = 30
@@ -93,10 +93,10 @@ def train(dm_train_set, dm_test_set):
 
     optimizer = optim.Adam([
                 {'params': other_params},
-                {'params': model.embedding.parameters(), 'lr': 1e-3}
+                {'params': model.embedding.parameters(), 'lr': 1e-4}
             ], lr=1e-3, betas=(0.9, 0.99))
 
-    logging = False
+    logging = True
     if logging:
         writer = SummaryWriter()
 
@@ -131,10 +131,10 @@ def train(dm_train_set, dm_test_set):
             final_pred = final_pred.view(1, -1, 2)
             final_pred = final_pred.squeeze()
 
-            cross_entropy = nn.CrossEntropyLoss(reduction='none')
+            cross_entropy = nn.NLLLoss(reduction='none')
             label = label.mul(mask)
             label = label.view(-1)
-            classify_loss = cross_entropy(final_pred, label)
+            classify_loss = cross_entropy(F.log_softmax(final_pred, dim=1), label)
             classify_loss = classify_loss.mul(mask_)
             if mask_.sum() > 0:
                 classify_loss = classify_loss.sum() / mask_.sum()
@@ -175,10 +175,9 @@ def train(dm_train_set, dm_test_set):
         history = valid_util.validate(model, dm_test_set, dm_test_dataloader, mode='detail', pred_history=history)
         pickle.dump(history, open('./tmp/e2e_'+RNN_type+'_history.pkl', 'wb'))
 
-        # dm_valid_set = pickle.load(open('./tmp/e2e_we_valid_dataset.pkl', 'rb'))
-        # valid_util.validate(model, dm_valid_set, mode='output')
+        dm_valid_set = pickle.load(open('./tmp/triplet_valid_dataset.pkl', 'rb'))
+        valid_util.validate(model, dm_valid_set, mode='output')
 
     if logging:
         writer.close()
-
     return

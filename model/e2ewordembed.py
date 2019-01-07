@@ -328,9 +328,10 @@ def train(dm_train_set, dm_test_set):
                 {'params': model.embedding.parameters(), 'lr': 1e-4}
             ], lr=1e-3, betas=(0.9, 0.99))
 
-    logging = True
+    logging = False
     if logging:
         writer = SummaryWriter()
+        log_name = 'Triplet_embed'
 
     history = None
 
@@ -363,10 +364,10 @@ def train(dm_train_set, dm_test_set):
             final_pred = final_pred.view(1, -1, 2)
             final_pred = final_pred.squeeze()
 
-            cross_entropy = nn.CrossEntropyLoss(reduction='none')
+            cross_entropy = nn.NLLLoss(reduction='none')
             label = label.mul(mask)
             label = label.view(-1)
-            classify_loss = cross_entropy(final_pred, label)
+            classify_loss = cross_entropy(F.log_softmax(final_pred, dim=1), label)
             classify_loss = classify_loss.mul(mask_)
             if mask_.sum() > 0:
                 classify_loss = classify_loss.sum() / mask_.sum()
@@ -383,7 +384,7 @@ def train(dm_train_set, dm_test_set):
                 print('epoch: %d batch %d : loss: %4.6f embed-loss: %4.6f class-loss: %4.6f accuracy: %4.6f'
                       % (epoch, batch_idx, loss.item(), embedding_loss.item(), classify_loss.item(), accuracy))
                 if logging:
-                    writer.add_scalars('we_data/loss', {
+                    writer.add_scalars(log_name + '_data/loss', {
                         'Total Loss': loss,
                         'Embedding Loss': embedding_loss,
                         'Classify Loss': classify_loss
@@ -393,23 +394,23 @@ def train(dm_train_set, dm_test_set):
 
         if logging:
             result_dict = valid_util.validate(model, dm_test_set, dm_test_dataloader, mode='report')
-            writer.add_scalars('we_data/0-PRF', {
+            writer.add_scalars(log_name + '_data/0-PRF', {
                 '0-Precision': result_dict['0']['precision'],
                 '0-Recall': result_dict['0']['recall'],
                 '0-F1-score': result_dict['0']['f1-score']
             }, epoch)
-            writer.add_scalars('we_data/1-PRF', {
+            writer.add_scalars(log_name + '_data/1-PRF', {
                 '1-Precision': result_dict['1']['precision'],
                 '1-Recall': result_dict['1']['recall'],
                 '1-F1-score': result_dict['1']['f1-score']
             }, epoch)
-            writer.add_scalar('we_data/accuracy', result_dict['accuracy'], epoch)
+            writer.add_scalar(log_name + '_data/accuracy', result_dict['accuracy'], epoch)
 
         history = valid_util.validate(model, dm_test_set, dm_test_dataloader, mode='detail', pred_history=history)
         pickle.dump(history, open('./tmp/e2e_we_history.pkl', 'wb'))
 
-        # dm_valid_set = pickle.load(open('./tmp/e2e_we_valid_dataset.pkl', 'rb'))
-        # valid_util.validate(model, dm_valid_set, mode='output')
+        dm_valid_set = pickle.load(open('./tmp/triplet_valid_dataset.pkl', 'rb'))
+        valid_util.validate(model, dm_valid_set, mode='output')
 
     if logging:
         writer.close()

@@ -34,7 +34,7 @@ def validate(model, dm_test_set, dataloader=None, mode='acc', py=False, pred_his
         else:
             pred = model.forward(sentence)
 
-        pred = F.softmax(pred, dim=1)
+        pred = F.log_softmax(pred, dim=1)
         pred_array.extend(pred.argmax(dim=1).cpu().numpy())
         label_array.extend(sample_dict['label'].numpy())
         id_array.extend(sample_dict['raw_id'].numpy())
@@ -73,7 +73,7 @@ def validate(model, dm_test_set, dataloader=None, mode='acc', py=False, pred_his
 
 
 def running_accuracy(pred, label, mask=None):
-    pred = F.softmax(pred, dim=1)
+    pred = F.log_softmax(pred, dim=1)
     pred = torch.argmax(pred, dim=1).squeeze()
     if mask is None:
         hit_count = torch.eq(pred, label)
