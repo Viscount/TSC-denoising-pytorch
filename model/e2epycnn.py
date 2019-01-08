@@ -79,7 +79,7 @@ class E2ECNNModeler(nn.Module):
         out_ = [conv(sent_static_emd) for conv in self.convs]
         out_ = torch.cat(out_, dim=1).squeeze()
 
-        py_emd = self.static_embedding(sent_py)
+        py_emd = self.py_embedding(sent_py)
         py_emd = py_emd.permute(0, 2, 1)
         py_out = [conv(py_emd) for conv in self.convs]
         py_out = torch.cat(py_out, dim=1).squeeze()
@@ -150,7 +150,7 @@ def train(dm_train_set, dm_test_set):
                 {'params': model.dynamic_embedding.parameters(), 'lr': 1e-4}
             ], lr=1e-3, betas=(0.9, 0.99))
 
-    logging = False
+    logging = True
     if logging:
         writer = SummaryWriter()
         log_name = 'pycnn_concat'
