@@ -65,11 +65,11 @@ def validate(model, dm_test_set, dataloader=None, mode='acc', py=False, pred_his
                 history[raw_id] = history_
         print('Test Accuracy: %4.6f' % accuracy)
         print(classification_report(label_array, pred_array, digits=4))
-        return history
+        return accuracy, history
     else:
         print('Test Accuracy: %4.6f' % accuracy)
         print(classification_report(label_array, pred_array, digits=4))
-        return
+        return accuracy
 
 
 def running_accuracy(pred, label, mask=None):

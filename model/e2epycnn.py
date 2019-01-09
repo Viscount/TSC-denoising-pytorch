@@ -9,6 +9,7 @@ import pickle
 import torch.utils.data as data
 from torch.autograd import Variable
 import torch.optim as optim
+import util
 import util.validation as valid_util
 import util.strategy as stg
 from tensorboardX import SummaryWriter
@@ -103,15 +104,17 @@ class E2ECNNModeler(nn.Module):
 
 
 def train(dm_train_set, dm_test_set):
-    torch.manual_seed(2333)
+    util.set_random_seed(2333)
 
     EMBEDDING_DIM = 200
     feature_dim = 50
     max_len = 49
     windows_size = [1, 2, 3, 4]
     batch_size = 128
-    epoch_num = 15
-    fusion_type = 'concat'
+    epoch_num = 20
+    fusion_type = 'gate'
+    max_acc = 0
+    model_save_path = '.tmp/model_save/pycnn_' + fusion_type + '.model'
 
     dm_dataloader = data.DataLoader(
         dataset=dm_train_set,
@@ -143,25 +146,26 @@ def train(dm_train_set, dm_test_set):
         print("CUDA : Off")
 
     embedding_params = list(map(id, model.dynamic_embedding.parameters()))
+    embedding_params.extend(list(map(id, model.py_embedding.parameters())))
     other_params = filter(lambda p: id(p) not in embedding_params, model.parameters())
 
     optimizer = optim.Adam([
                 {'params': other_params},
-                {'params': model.dynamic_embedding.parameters(), 'lr': 1e-4}
+                {'params': model.dynamic_embedding.parameters(), 'lr': 1e-5}
             ], lr=1e-3, betas=(0.9, 0.99))
 
-    logging = True
+    logging = False
     if logging:
         writer = SummaryWriter()
-        log_name = 'pycnn_concat'
+        log_name = 'pycnn_gate'
 
     history = None
 
     for epoch in range(epoch_num):
 
-        if (epoch+1) % 3 == 0:
+        if (epoch+1) % 5 == 0:
             for param_group in optimizer.param_groups:
-                param_group['lr'] = param_group['lr'] * 0.5
+                param_group['lr'] = param_group['lr'] * 0.1
 
         for batch_idx, sample_dict in enumerate(dm_dataloader):
             anchor = Variable(torch.LongTensor(sample_dict['anchor']))
@@ -202,6 +206,7 @@ def train(dm_train_set, dm_test_set):
             label = label.view(-1)
             classify_loss = cross_entropy(F.log_softmax(final_pred, dim=1), label)
             classify_loss = classify_loss.mul(mask_)
+
             if mask_.sum() > 0:
                 classify_loss = classify_loss.sum() / mask_.sum()
             else:
@@ -209,8 +214,6 @@ def train(dm_train_set, dm_test_set):
 
             alpha = stg.dynamic_alpha(embedding_loss, classify_loss)
             loss = alpha * embedding_loss + (1-alpha) * classify_loss
-            # loss = classify_loss
-            # loss = embedding_loss
 
             if batch_idx % 1000 == 0:
                 accuracy = valid_util.running_accuracy(final_pred, label, mask_)
@@ -238,12 +241,17 @@ def train(dm_train_set, dm_test_set):
                 '1-F1-score': result_dict['1']['f1-score']
             }, epoch)
             writer.add_scalar(log_name+'_data/accuracy', result_dict['accuracy'], epoch)
-        history = valid_util.validate(model, dm_test_set, dm_test_dataloader, mode='detail', py=True, pred_history=history)
-        pickle.dump(history, open('./tmp/e2e_pycnn_history.pkl', 'wb'))
+        accuracy, history = valid_util.validate(model, dm_test_set, dm_test_dataloader,
+                                                mode='detail', py=True, pred_history=history)
+        # pickle.dump(history, open('./tmp/e2e_pycnn_history.pkl', 'wb'))
+        if accuracy > max_acc:
+            max_acc = accuracy
+            # torch.save(model.state_dict(), model_save_path)
 
         dm_valid_set = pickle.load(open('./tmp/triplet_valid_dataset.pkl', 'rb'))
         valid_util.validate(model, dm_valid_set, mode='output', py=True)
 
     if logging:
         writer.close()
+    print("Max Accuracy: %4.6f" % max_acc)
     return

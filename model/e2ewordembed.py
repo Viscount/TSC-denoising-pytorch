@@ -9,12 +9,9 @@ import torch.utils.data as data
 from torch.autograd import Variable
 import torch.optim as optim
 import numpy as np
-import pandas as pd
-import collections
-from util.word_segment import word_segment
+import util
 import util.validation as valid_util
 import util.strategy as stg
-from sklearn.model_selection import train_test_split
 from tensorboardX import SummaryWriter
 
 
@@ -52,11 +49,13 @@ class EmbeddingE2EModeler(nn.Module):
 
 
 def train(dm_train_set, dm_test_set):
-    torch.manual_seed(1)
+    util.set_random_seed(1)
 
     EMBEDDING_DIM = 200
     batch_size = 128
     epoch_num = 50
+    max_acc = 0
+    model_save_path = '.tmp/model_save/triplet_embed.model'
 
     dm_dataloader = data.DataLoader(
         dataset=dm_train_set,
@@ -140,8 +139,6 @@ def train(dm_train_set, dm_test_set):
 
             alpha = stg.dynamic_alpha(embedding_loss, classify_loss)
             loss = alpha * embedding_loss + (1-alpha) * classify_loss
-            # loss = classify_loss
-            # loss = embedding_loss
 
             if batch_idx % 1000 == 0:
                 accuracy = valid_util.running_accuracy(final_pred, label, mask_)
@@ -170,12 +167,16 @@ def train(dm_train_set, dm_test_set):
             }, epoch)
             writer.add_scalar(log_name + '_data/accuracy', result_dict['accuracy'], epoch)
 
-        history = valid_util.validate(model, dm_test_set, dm_test_dataloader, mode='detail', pred_history=history)
-        pickle.dump(history, open('./tmp/e2e_we_history.pkl', 'wb'))
+        accuracy, history = valid_util.validate(model, dm_test_set, dm_test_dataloader, mode='detail', pred_history=history)
+        # pickle.dump(history, open('./tmp/e2e_we_history.pkl', 'wb'))
+        if accuracy > max_acc:
+            max_acc = accuracy
+            # torch.save(model.state_dict(), model_save_path)
 
         dm_valid_set = pickle.load(open('./tmp/triplet_valid_dataset.pkl', 'rb'))
         valid_util.validate(model, dm_valid_set, mode='output')
 
     if logging:
         writer.close()
+    print("Max Accuracy: %4.6f" % max_acc)
     return
