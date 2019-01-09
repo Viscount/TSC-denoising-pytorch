@@ -102,6 +102,24 @@ def build(samples, train_select, test_select, dataset_type):
 
         return dm_train_set, dm_test_set
 
+    if dataset_type == 'seperate':
+        train_samples = []
+        test_samples = []
+        unlabeled_samples = []
+
+        for episode_lvl_samples in samples:
+            for sample in episode_lvl_samples:
+                if len(sample['content']) > max_len:
+                    max_len = len(sample['content'])
+                if sample['raw_id'] in train_select:
+                    train_samples.append(sample)
+                elif sample['raw_id'] in test_select:
+                    test_samples.append(sample)
+                else:
+                    unlabeled_samples.append(sample)
+
+        return train_samples, test_samples, unlabeled_samples
+
 
 def dataset_label_fix(dataset, fix_file):
     fix_data = pd.read_csv(fix_file, delimiter=",", encoding="utf-8")
