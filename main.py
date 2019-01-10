@@ -21,7 +21,7 @@ import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 
-def preprocess():
+def preprocess(season_id):
     # load data from csv
     # seasons = pd.read_csv("./data/bangumi.csv", delimiter=",", encoding="utf-8")
     # episodes = pd.read_csv("./data/episode.csv", delimiter=",", encoding="utf-8")
@@ -29,7 +29,7 @@ def preprocess():
                                    quoting=csv.QUOTE_NONE, low_memory=False)
     danmaku_complete = danmaku_complete.fillna(-1)
 
-    danmaku_selected = danmaku_complete[danmaku_complete['season_id'] == '24581']
+    danmaku_selected = danmaku_complete[danmaku_complete['season_id'] == season_id]
 
     samples, train_select, test_select = dataset.dataset_split(danmaku_selected)
 
@@ -37,23 +37,29 @@ def preprocess():
 
     dm_train_set, dm_test_set = dataset.build(samples, train_select, test_select, dataset_type)
 
-    pickle.dump(dm_train_set, open('./tmp/' + dataset_type + '_train_dataset.pkl', 'wb'))
-    pickle.dump(dm_test_set, open('./tmp/' + dataset_type + '_test_dataset.pkl', 'wb'))
+    print('Dataset Exporting...')
+
+    pickle.dump(dm_train_set, open('./tmp/' + season_id + '_' + dataset_type + '_train_dataset.pkl', 'wb'), protocol=pickle.HIGHEST_PROTOCOL)
+    pickle.dump(dm_test_set, open('./tmp/' + season_id + '_' + dataset_type + '_test_dataset.pkl', 'wb'), protocol=pickle.HIGHEST_PROTOCOL)
 
     dataset_type = 'triplet'
 
     dm_train_set, dm_test_set = dataset.build(samples, train_select, test_select, dataset_type)
 
-    pickle.dump(dm_train_set, open('./tmp/' + dataset_type + '_train_dataset.pkl', 'wb'))
-    pickle.dump(dm_test_set, open('./tmp/' + dataset_type + '_test_dataset.pkl', 'wb'))
+    print('Dataset Exporting...')
+
+    pickle.dump(dm_train_set, open('./tmp/' + season_id + '_' + dataset_type + '_train_dataset.pkl', 'wb'), protocol=pickle.HIGHEST_PROTOCOL)
+    pickle.dump(dm_test_set, open('./tmp/' + season_id + '_' + dataset_type + '_test_dataset.pkl', 'wb'), protocol=pickle.HIGHEST_PROTOCOL)
 
 
 if __name__ == "__main__":
-    # preprocess()
+    # season_id = '24581'
+    season_id = '24567'
+    preprocess(season_id)
 
     # load dataset
-    train_set = pickle.load(open('./tmp/triplet_train_dataset.pkl', 'rb'))
-    test_set = pickle.load(open('./tmp/triplet_test_dataset.pkl', 'rb'))
+    train_set = pickle.load(open('./tmp/' + season_id + '_triplet_train_dataset.pkl', 'rb'), protocol=pickle.HIGHEST_PROTOCOL)
+    test_set = pickle.load(open('./tmp/' + season_id + 'triplet_test_dataset.pkl', 'rb'), protocol=pickle.HIGHEST_PROTOCOL)
     print(type(train_set))
     print(type(test_set))
 
