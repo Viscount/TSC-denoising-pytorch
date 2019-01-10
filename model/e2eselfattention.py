@@ -91,7 +91,6 @@ class E2ESelfAttentionModeler(nn.Module):
 
 
 def train(dm_train_set, dm_test_set):
-    torch.manual_seed(1)
 
     EMBEDDING_DIM = 200
     feature_dim = 50

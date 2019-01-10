@@ -5,13 +5,15 @@ import torch.utils.data as data
 import numpy as np
 import pandas as pd
 import collections
+import random
 
 
 class DmTripletTrainDataset(data.Dataset):
-    def __init__(self, dm_samples, min_count, max_len, context_size, min_common_words, dictionary=None):
+    def __init__(self, dm_samples, min_count, max_len, context_size, min_common_words, max_samples, dictionary=None):
         self.max_len = max_len
         self.min_count = min_count
         self.min_common_words = min_common_words
+        self.max_samples = max_samples
         all_sentences = []
         if dictionary is not None:
             self.word_to_ix = dictionary
@@ -80,27 +82,37 @@ class DmTripletTrainDataset(data.Dataset):
                 while start_sample['playback_time'] < playback_time - context_size:
                     context_start_index += 1
                     start_sample = episode_lvl_samples[context_start_index]
-                # build sample pair in context
+                # find semantic similar comments in context
                 it = context_start_index
                 sample_ = episode_lvl_samples[it]
+                sample_candidates = []
                 while sample_['playback_time'] <= playback_time + context_size:
                     if sample['raw_id'] != sample_['raw_id'] and \
                             common_words(py_content, sample_['pinyin']) >= min_common_words:
-                        sentence_anchor = tokenize(sample['content'], max_len, self.word2ix)
-                        sentence_positive = tokenize(sample_['content'], max_len, self.word2ix)
-                        neg_sample = negative_sampling(sample, all_sentences)
-                        sentence_negative = tokenize(neg_sample['content'], max_len, self.word2ix)
-                        py_anchor = tokenize(sample['pinyin'], max_len, self.pyword2ix)
-                        py_positive = tokenize(sample_['pinyin'], max_len, self.pyword2ix)
-                        py_negative = tokenize(neg_sample['pinyin'], max_len, self.pyword2ix)
-                        self.samples.append((sentence_anchor, sentence_positive, sentence_negative,
-                                             py_anchor, py_positive, py_negative))
-                        self.labels.append((sample['label'], sample_['label'], neg_sample['label']))
+                        sample_candidates.append(sample_)
                     it += 1
                     if it >= len(episode_lvl_samples):
                         break
                     else:
                         sample_ = episode_lvl_samples[it]
+
+                if max_samples > len(sample_candidates):
+                    selected_samples = sample_candidates
+                else:
+                    selected_samples = random.sample(sample_candidates, max_samples)
+
+                # build sample pair in context
+                for sample_ in selected_samples:
+                    sentence_anchor = tokenize(sample['content'], max_len, self.word2ix)
+                    sentence_positive = tokenize(sample_['content'], max_len, self.word2ix)
+                    neg_sample = negative_sampling(sample, all_sentences)
+                    sentence_negative = tokenize(neg_sample['content'], max_len, self.word2ix)
+                    py_anchor = tokenize(sample['pinyin'], max_len, self.pyword2ix)
+                    py_positive = tokenize(sample_['pinyin'], max_len, self.pyword2ix)
+                    py_negative = tokenize(neg_sample['pinyin'], max_len, self.pyword2ix)
+                    self.samples.append((sentence_anchor, sentence_positive, sentence_negative,
+                                         py_anchor, py_positive, py_negative))
+                    self.labels.append((sample['label'], sample_['label'], neg_sample['label']))
 
         print('%d samples constructed.' % len(self.samples))
         return

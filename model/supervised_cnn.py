@@ -9,7 +9,6 @@ import pickle
 import torch.utils.data as data
 from torch.autograd import Variable
 import torch.optim as optim
-import util
 import util.validation as valid_util
 from tensorboardX import SummaryWriter
 
@@ -17,7 +16,6 @@ from model.e2ecnn import E2ECNNModeler
 
 
 def train(dm_train_set, dm_test_set):
-    util.set_random_seed(1)
 
     EMBEDDING_DIM = 200
     feature_dim = 50

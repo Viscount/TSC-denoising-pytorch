@@ -172,7 +172,6 @@ def build_dataset(danmaku_complete):
 
 
 def train(dm_set):
-    torch.manual_seed(1)
 
     EMBEDDING_DIM = 200
     batch_size = 128

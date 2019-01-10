@@ -5,6 +5,9 @@ import pandas as pd
 import util.dataset_util as dataset
 import csv
 import pickle
+import random
+import numpy as np
+import torch
 
 import model.skip_gram as skip_gram
 import model.tsc_embed as tsc_embed
@@ -19,6 +22,15 @@ import model.supervised_cnn as sup_cnn
 
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+
+
+def set_random_seed(seed):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
+    return
 
 
 def preprocess(season_id):
@@ -53,6 +65,8 @@ def preprocess(season_id):
 
 
 if __name__ == "__main__":
+    # set random seed
+    set_random_seed(2333)
     # season_id = '24581'
     season_id = '24567'
     preprocess(season_id)

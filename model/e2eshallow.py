@@ -9,7 +9,6 @@ import numpy as np
 import torch.utils.data as data
 from torch.autograd import Variable
 import torch.optim as optim
-import util
 import util.validation as valid_util
 from tensorboardX import SummaryWriter
 
@@ -42,7 +41,6 @@ class EmbeddingE2EModeler(nn.Module):
 
 
 def train(dm_train_set, dm_test_set):
-    util.set_random_seed(1)
 
     EMBEDDING_DIM = 200
     batch_size = 128

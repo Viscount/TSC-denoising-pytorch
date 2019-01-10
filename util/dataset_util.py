@@ -83,6 +83,7 @@ def build(samples, train_select, test_select, dataset_type):
         common_words_min_count = 3
         min_count = 3
         max_len = 0
+        max_samples = 5
 
         train_samples = []
         test_samples = []
@@ -97,7 +98,7 @@ def build(samples, train_select, test_select, dataset_type):
                     episode_lvl_samples_.append(sample)
             train_samples.append(episode_lvl_samples_)
 
-        dm_train_set = DmTripletTrainDataset(train_samples, min_count, max_len, context_size, common_words_min_count)
+        dm_train_set = DmTripletTrainDataset(train_samples, min_count, max_len, context_size, common_words_min_count, max_samples)
         dm_test_set = DmTripletTestDataset(test_samples, max_len, dm_train_set.word_to_ix, dm_train_set.py_word_to_ix)
 
         return dm_train_set, dm_test_set
