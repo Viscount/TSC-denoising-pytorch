@@ -9,6 +9,7 @@ import pickle
 import torch.utils.data as data
 from torch.autograd import Variable
 import torch.optim as optim
+import torch.autograd as autograd
 import util.validation as valid_util
 import util.strategy as stg
 from tensorboardX import SummaryWriter
@@ -110,7 +111,7 @@ def train(dm_train_set, dm_test_set):
     windows_size = [1, 2, 3, 4]
     batch_size = 128
     epoch_num = 20
-    fusion_type = 'gate'
+    fusion_type = 'concat'
     max_acc = 0
     model_save_path = '.tmp/model_save/pycnn_' + fusion_type + '.model'
 
@@ -149,13 +150,14 @@ def train(dm_train_set, dm_test_set):
 
     optimizer = optim.Adam([
                 {'params': other_params},
-                {'params': model.dynamic_embedding.parameters(), 'lr': 1e-5}
-            ], lr=1e-3, betas=(0.9, 0.99))
+                {'params': model.dynamic_embedding.parameters(), 'lr': 1e-5},
+                {'params': model.py_embedding.parameters(), 'lr': 1e-5}
+            ], lr=1e-4, betas=(0.9, 0.99))
 
     logging = False
     if logging:
         writer = SummaryWriter()
-        log_name = 'pycnn_gate'
+        log_name = 'pycnn_' + fusion_type
 
     history = None
 
@@ -166,65 +168,66 @@ def train(dm_train_set, dm_test_set):
                 param_group['lr'] = param_group['lr'] * 0.1
 
         for batch_idx, sample_dict in enumerate(dm_dataloader):
-            anchor = Variable(torch.LongTensor(sample_dict['anchor']))
-            pos = Variable(torch.LongTensor(sample_dict['pos']))
-            neg = Variable(torch.LongTensor(sample_dict['neg']))
-            py_anchor = Variable(torch.LongTensor(sample_dict['py_anchor']))
-            py_pos = Variable(torch.LongTensor(sample_dict['py_pos']))
-            py_neg = Variable(torch.LongTensor(sample_dict['py_neg']))
-            label = Variable(torch.LongTensor(sample_dict['label']))
-            mask = Variable(torch.LongTensor(sample_dict['mask']))
-            mask_ = mask.type(torch.FloatTensor).view(-1)
-            if torch.cuda.is_available():
-                anchor = anchor.cuda()
-                pos = pos.cuda()
-                neg = neg.cuda()
-                py_anchor = py_anchor.cuda()
-                py_pos = py_pos.cuda()
-                py_neg = py_neg.cuda()
-                label = label.cuda()
-                mask = mask.cuda()
-                mask_ = mask_.cuda()
+            with autograd.detect_anomaly():
+                anchor = Variable(torch.LongTensor(sample_dict['anchor']))
+                pos = Variable(torch.LongTensor(sample_dict['pos']))
+                neg = Variable(torch.LongTensor(sample_dict['neg']))
+                py_anchor = Variable(torch.LongTensor(sample_dict['py_anchor']))
+                py_pos = Variable(torch.LongTensor(sample_dict['py_pos']))
+                py_neg = Variable(torch.LongTensor(sample_dict['py_neg']))
+                label = Variable(torch.LongTensor(sample_dict['label']))
+                mask = Variable(torch.LongTensor(sample_dict['mask']))
+                mask_ = mask.type(torch.FloatTensor).view(-1)
+                if torch.cuda.is_available():
+                    anchor = anchor.cuda()
+                    pos = pos.cuda()
+                    neg = neg.cuda()
+                    py_anchor = py_anchor.cuda()
+                    py_pos = py_pos.cuda()
+                    py_neg = py_neg.cuda()
+                    label = label.cuda()
+                    mask = mask.cuda()
+                    mask_ = mask_.cuda()
 
-            optimizer.zero_grad()
-            anchor_embed = model.embed(anchor, py_anchor)
-            pos_embed = model.embed(pos, py_pos)
-            neg_embed = model.embed(neg, py_neg)
-            triplet_loss = nn.TripletMarginLoss(margin=10, p=2)
-            embedding_loss = triplet_loss(anchor_embed, pos_embed, neg_embed)
-            anchor_pred = model.forward(anchor, py_anchor).unsqueeze(1)
-            pos_pred = model.forward(pos, py_pos).unsqueeze(1)
-            neg_pred = model.forward(neg, py_neg).unsqueeze(1)
-            final_pred = torch.cat((anchor_pred, pos_pred, neg_pred), dim=1)
-            final_pred = final_pred.view(1, -1, 2)
-            final_pred = final_pred.squeeze()
+                optimizer.zero_grad()
+                anchor_embed = model.embed(anchor, py_anchor)
+                pos_embed = model.embed(pos, py_pos)
+                neg_embed = model.embed(neg, py_neg)
+                triplet_loss = nn.TripletMarginLoss(margin=10, p=2)
+                embedding_loss = triplet_loss(anchor_embed, pos_embed, neg_embed)
+                anchor_pred = model.forward(anchor, py_anchor).unsqueeze(1)
+                pos_pred = model.forward(pos, py_pos).unsqueeze(1)
+                neg_pred = model.forward(neg, py_neg).unsqueeze(1)
+                final_pred = torch.cat((anchor_pred, pos_pred, neg_pred), dim=1)
+                final_pred = final_pred.view(1, -1, 2)
+                final_pred = final_pred.squeeze()
 
-            cross_entropy = nn.NLLLoss(reduction='none')
-            label = label.mul(mask)
-            label = label.view(-1)
-            classify_loss = cross_entropy(F.log_softmax(final_pred, dim=1), label)
-            classify_loss = classify_loss.mul(mask_)
+                cross_entropy = nn.NLLLoss(reduction='none')
+                label = label.mul(mask)
+                label = label.view(-1)
+                classify_loss = cross_entropy(F.log_softmax(final_pred, dim=1), label)
+                classify_loss = classify_loss.mul(mask_)
 
-            if mask_.sum() > 0:
-                classify_loss = classify_loss.sum() / mask_.sum()
-            else:
-                classify_loss = classify_loss.sum()
+                if mask_.sum() > 0:
+                    classify_loss = classify_loss.sum() / mask_.sum()
+                else:
+                    classify_loss = classify_loss.sum()
 
-            alpha = stg.dynamic_alpha(embedding_loss, classify_loss)
-            loss = alpha * embedding_loss + (1-alpha) * classify_loss
+                alpha = stg.dynamic_alpha(embedding_loss, classify_loss)
+                loss = alpha * embedding_loss + (1-alpha) * classify_loss
 
-            if batch_idx % 1000 == 0:
-                accuracy = valid_util.running_accuracy(final_pred, label, mask_)
-                print('epoch: %d batch %d : loss: %4.6f embed-loss: %4.6f class-loss: %4.6f accuracy: %4.6f'
-                      % (epoch, batch_idx, loss.item(), embedding_loss.item(), classify_loss.item(), accuracy))
-                if logging:
-                    writer.add_scalars(log_name+'_data/loss', {
-                        'Total Loss': loss,
-                        'Embedding Loss': embedding_loss,
-                        'Classify Loss': classify_loss
-                    }, epoch * 10 + batch_idx // 1000)
-            loss.backward()
-            optimizer.step()
+                if batch_idx % 1000 == 0:
+                    accuracy = valid_util.running_accuracy(final_pred, label, mask_)
+                    print('epoch: %d batch %d : loss: %4.6f embed-loss: %4.6f class-loss: %4.6f accuracy: %4.6f'
+                          % (epoch, batch_idx, loss.item(), embedding_loss.item(), classify_loss.item(), accuracy))
+                    if logging:
+                        writer.add_scalars(log_name+'_data/loss', {
+                            'Total Loss': loss,
+                            'Embedding Loss': embedding_loss,
+                            'Classify Loss': classify_loss
+                        }, epoch * 10 + batch_idx // 1000)
+                loss.backward()
+                optimizer.step()
 
         if logging:
             result_dict = valid_util.validate(model, dm_test_set, dm_test_dataloader, mode='report', py=True)
@@ -246,8 +249,8 @@ def train(dm_train_set, dm_test_set):
             max_acc = accuracy
             # torch.save(model.state_dict(), model_save_path)
 
-        dm_valid_set = pickle.load(open('./tmp/triplet_valid_dataset.pkl', 'rb'))
-        valid_util.validate(model, dm_valid_set, mode='output', py=True)
+        # dm_valid_set = pickle.load(open('./tmp/triplet_valid_dataset.pkl', 'rb'))
+        # valid_util.validate(model, dm_valid_set, mode='output', py=True)
 
     if logging:
         writer.close()

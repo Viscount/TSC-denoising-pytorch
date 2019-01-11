@@ -45,6 +45,8 @@ def train(dm_train_set, dm_test_set):
     EMBEDDING_DIM = 200
     batch_size = 128
     epoch_num = 150
+    max_acc = 0
+    model_save_path = '.tmp/model_save/straight_embed.model'
 
     dm_dataloader = data.DataLoader(
         dataset=dm_train_set,
@@ -111,10 +113,15 @@ def train(dm_train_set, dm_test_set):
                 '1-F1-score': result_dict['1']['f1-score']
             }, epoch)
             writer.add_scalar(log_name + '_data/accuracy', result_dict['accuracy'], epoch)
-        valid_util.validate(model, dm_test_set, dm_test_dataloader, mode='output')
+        accuracy = valid_util.validate(model, dm_test_set, dm_test_dataloader, mode='output')
 
-        dm_valid_set = pickle.load(open('./tmp/unigram_valid_dataset.pkl', 'rb'))
-        valid_util.validate(model, dm_valid_set, mode='output')
+        if accuracy > max_acc:
+            max_acc = accuracy
+            # torch.save(model.state_dict(), model_save_path)
+
+        # dm_valid_set = pickle.load(open('./tmp/unigram_valid_dataset.pkl', 'rb'))
+        # valid_util.validate(model, dm_valid_set, mode='output')
     if logging:
         writer.close()
+    print("Max Accuracy: %4.6f" % max_acc)
     return

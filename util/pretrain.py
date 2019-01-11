@@ -8,6 +8,9 @@ import csv
 import numpy as np
 from util.word_segment import word_segment
 import pickle
+import logging
+
+logging.basicConfig(level=logging.INFO)
 
 
 class TscTaggedDocument(object):
