@@ -18,5 +18,5 @@ def descend_alpha(start, bound, rate, current_epoch):
 
 
 def dynamic_alpha(embed_loss, class_loss):
-    ratio = embed_loss / class_loss
+    ratio = embed_loss / (class_loss + 1e-8)
     return 1-(1.0 / (1+ratio))
