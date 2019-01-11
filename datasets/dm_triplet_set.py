@@ -14,7 +14,10 @@ class DmTripletTrainDataset(data.Dataset):
         self.min_count = min_count
         self.min_common_words = min_common_words
         self.max_samples = max_samples
-        all_sentences = []
+        self.all_sentences = []
+        self.sent_to_idx = dict()
+        self.positive_samples = dict()
+
         if dictionary is not None:
             self.word_to_ix = dictionary
         else:
@@ -22,7 +25,8 @@ class DmTripletTrainDataset(data.Dataset):
             aggregate_samples = []
             for episode_lvl_samples in dm_samples:
                 for sample in episode_lvl_samples:
-                    all_sentences.append(sample)
+                    self.all_sentences.append(sample)
+                    self.sent_to_idx[sample['raw_id']] = len(self.all_sentences)-1
                     aggregate_samples.extend(sample['content'])
             counter = {'UNK': 0}
             counter.update(collections.Counter(aggregate_samples).most_common())
@@ -43,13 +47,12 @@ class DmTripletTrainDataset(data.Dataset):
                 self.word_to_ix[word] = len(self.word_to_ix)
 
             print('building pinyin vocabulary...')
-            aggregate_samples = []
+            py_aggregate_samples = []
             for episode_lvl_samples in dm_samples:
                 for sample in episode_lvl_samples:
-                    all_sentences.append(sample)
-                    aggregate_samples.extend(sample['pinyin'])
+                    py_aggregate_samples.extend(sample['pinyin'])
             counter = {'UNK': 0}
-            counter.update(collections.Counter(aggregate_samples).most_common())
+            counter.update(collections.Counter(py_aggregate_samples).most_common())
             rare_words = set()
             for word in counter:
                 if word != 'UNK' and counter[word] <= min_count:
@@ -67,12 +70,13 @@ class DmTripletTrainDataset(data.Dataset):
                 self.py_word_to_ix[word] = len(self.py_word_to_ix)
 
         print('building samples...')
-        self.samples = []
-        self.labels = []
+
+        positive_count = 0
         for episode_lvl_samples in dm_samples:
             context_start_index = 0
             for sample in episode_lvl_samples:
 
+                sample_id = sample['raw_id']
                 playback_time = sample['playback_time']
                 content = sample['content']
                 py_content = sample['pinyin']
@@ -89,32 +93,17 @@ class DmTripletTrainDataset(data.Dataset):
                 while sample_['playback_time'] <= playback_time + context_size:
                     if sample['raw_id'] != sample_['raw_id'] and \
                             common_words(py_content, sample_['pinyin']) >= min_common_words:
-                        sample_candidates.append(sample_)
+                        sample_candidates.append(sample_['raw_id'])
                     it += 1
                     if it >= len(episode_lvl_samples):
                         break
                     else:
                         sample_ = episode_lvl_samples[it]
 
-                if max_samples > len(sample_candidates):
-                    selected_samples = sample_candidates
-                else:
-                    selected_samples = random.sample(sample_candidates, max_samples)
+                self.positive_samples[sample_id] = sample_candidates
+                positive_count += len(self.positive_samples[sample_id])
 
-                # build sample pair in context
-                for sample_ in selected_samples:
-                    sentence_anchor = tokenize(sample['content'], max_len, self.word2ix)
-                    sentence_positive = tokenize(sample_['content'], max_len, self.word2ix)
-                    neg_sample = negative_sampling(sample, all_sentences)
-                    sentence_negative = tokenize(neg_sample['content'], max_len, self.word2ix)
-                    py_anchor = tokenize(sample['pinyin'], max_len, self.pyword2ix)
-                    py_positive = tokenize(sample_['pinyin'], max_len, self.pyword2ix)
-                    py_negative = tokenize(neg_sample['pinyin'], max_len, self.pyword2ix)
-                    self.samples.append((sentence_anchor, sentence_positive, sentence_negative,
-                                         py_anchor, py_positive, py_negative))
-                    self.labels.append((sample['label'], sample_['label'], neg_sample['label']))
-
-        print('%d samples constructed.' % len(self.samples))
+        print('%d samples constructed.' % positive_count)
         return
 
     def word2ix(self, word):
@@ -130,26 +119,37 @@ class DmTripletTrainDataset(data.Dataset):
             return self.py_word_to_ix['UNK']
 
     def __getitem__(self, index):
-        sample = self.samples[index]
-        label = self.labels[index]
+        sample = self.all_sentences[index]
+        positive_id = random.choice(self.positive_samples[sample['raw_id']])
+        positive = self.sent_to_idx[positive_id]
+        negative = negative_sampling(sample, self.all_sentences)
+
+        sentence_anchor = tokenize(sample['content'], self.max_len, self.word2ix)
+        sentence_positive = tokenize(positive['content'], self.max_len, self.word2ix)
+        sentence_negative = tokenize(negative['content'], self.max_len, self.word2ix)
+        py_anchor = tokenize(sample['pinyin'], self.max_len, self.pyword2ix)
+        py_positive = tokenize(positive['pinyin'], self.max_len, self.pyword2ix)
+        py_negative = tokenize(negative['pinyin'], self.max_len, self.pyword2ix)
+        label = [sample['label'], positive['label'], negative['label']]
+
         mask = np.zeros(3, dtype=int)
         for i in range(3):
             if label[i] != -1:
                 mask[i] = 1
         sample_dict = {
-            'anchor': sample[0],
-            'pos': sample[1],
-            'neg': sample[2],
-            'py_anchor': sample[3],
-            'py_pos': sample[4],
-            'py_neg': sample[5],
+            'anchor': sentence_anchor,
+            'pos': sentence_positive,
+            'neg': sentence_negative,
+            'py_anchor': py_anchor,
+            'py_pos': py_positive,
+            'py_neg': py_negative,
             'label': np.array([label[0], label[1], label[2]]),
             'mask': mask
         }
         return sample_dict
 
     def __len__(self):
-        return len(self.samples)
+        return len(self.all_sentences)
 
     def save_vocab(self, path):
         vocab = []
