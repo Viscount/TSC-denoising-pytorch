@@ -134,9 +134,9 @@ def train(dm_train_set, dm_test_set):
     model = E2ECNNModeler(dm_train_set.vocab_size(), dm_train_set.py_vocab_size(),
                           EMBEDDING_DIM, feature_dim, windows_size, max_len, fusion_type)
     print(model)
-    init_weight = np.loadtxt("./tmp/we_weights.txt")
+    init_weight = np.loadtxt("./tmp/24581_we_weights.txt")
     model.init_emb(init_weight)
-    init_weight = np.loadtxt("./tmp/py_weights.txt")
+    init_weight = np.loadtxt("./tmp/24581_py_weights.txt")
     model.init_py_emb(init_weight)
     if torch.cuda.is_available():
         print("CUDA : On")
@@ -216,7 +216,7 @@ def train(dm_train_set, dm_test_set):
                 alpha = stg.dynamic_alpha(embedding_loss, classify_loss)
                 loss = alpha * embedding_loss + (1-alpha) * classify_loss
 
-                if batch_idx % 1000 == 0:
+                if batch_idx % 100 == 0:
                     accuracy = valid_util.running_accuracy(final_pred, label, mask_)
                     print('epoch: %d batch %d : loss: %4.6f embed-loss: %4.6f class-loss: %4.6f accuracy: %4.6f'
                           % (epoch, batch_idx, loss.item(), embedding_loss.item(), classify_loss.item(), accuracy))

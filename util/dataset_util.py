@@ -4,6 +4,7 @@
 from util.word_segment import word_segment
 from sklearn.model_selection import train_test_split
 import pandas as pd
+import pickle
 
 from datasets.dm_unigram_set import DmUnigramDataset
 from datasets.dm_triplet_set import DmTripletTrainDataset, DmTripletTestDataset
@@ -152,3 +153,9 @@ def compare_dataset(dataset, dataset_):
         return True
     else:
         return False
+
+
+if __name__ == "__main__":
+    dataset = pickle.load(open('../tmp/24581_triplet_test_dataset.pkl', 'rb'))
+    dateset_ = pickle.load(open('../tmp/unigram_test_dataset.pkl', 'rb'))
+    compare_dataset(dataset, dateset_)

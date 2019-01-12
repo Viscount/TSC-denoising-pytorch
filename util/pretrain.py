@@ -58,9 +58,9 @@ if __name__ == "__main__":
     #                                quoting=csv.QUOTE_NONE, low_memory=False)
     # danmaku_complete = danmaku_complete.fillna(-1)
     # danmaku_selected = danmaku_complete[danmaku_complete['season_id'] == '24581']
-    # train(danmaku_selected, "dm_word_embedding_200.model")
+    # train(danmaku_selected, "24581_dm_word_embedding.model")
 
-    word_model = Word2Vec.load("../tmp/dm_word_embedding_200.model")
+    word_model = Word2Vec.load("../tmp/24581_dm_word_embedding.model")
     word_dim = 200
     print(len(word_model.wv.vocab))
 

@@ -116,7 +116,7 @@ def train(dm_train_set, dm_test_set):
 
     model = E2ESelfAttentionModeler(dm_train_set.vocab_size(), EMBEDDING_DIM, feature_dim, max_len)
     print(model)
-    init_weight = np.loadtxt("./tmp/we_weights.txt")
+    init_weight = np.loadtxt("./tmp/24581_we_weights.txt")
     model.init_emb(init_weight)
     if torch.cuda.is_available():
         print("CUDA : On")

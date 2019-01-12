@@ -73,7 +73,7 @@ def train(dm_train_set, dm_test_set):
 
     model = EmbeddingE2EModeler(dm_train_set.vocab_size(), EMBEDDING_DIM)
     print(model)
-    init_weight = np.loadtxt("./tmp/we_weights.txt")
+    init_weight = np.loadtxt("./tmp/24581_we_weights.txt")
     model.init_emb(init_weight)
     if torch.cuda.is_available():
         print("CUDA : On")
@@ -138,7 +138,7 @@ def train(dm_train_set, dm_test_set):
             alpha = stg.dynamic_alpha(embedding_loss, classify_loss)
             loss = alpha * embedding_loss + (1-alpha) * classify_loss
 
-            if batch_idx % 1000 == 0:
+            if batch_idx % 100 == 0:
                 accuracy = valid_util.running_accuracy(final_pred, label, mask_)
                 print('epoch: %d batch %d : loss: %4.6f embed-loss: %4.6f class-loss: %4.6f accuracy: %4.6f'
                       % (epoch, batch_idx, loss.item(), embedding_loss.item(), classify_loss.item(), accuracy))
@@ -171,8 +171,8 @@ def train(dm_train_set, dm_test_set):
             max_acc = accuracy
             # torch.save(model.state_dict(), model_save_path)
 
-        dm_valid_set = pickle.load(open('./tmp/triplet_valid_dataset.pkl', 'rb'))
-        valid_util.validate(model, dm_valid_set, mode='output')
+        # dm_valid_set = pickle.load(open('./tmp/triplet_valid_dataset.pkl', 'rb'))
+        # valid_util.validate(model, dm_valid_set, mode='output')
 
     if logging:
         writer.close()

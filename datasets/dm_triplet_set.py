@@ -100,8 +100,9 @@ class DmTripletTrainDataset(data.Dataset):
                     else:
                         sample_ = episode_lvl_samples[it]
 
-                self.positive_samples[sample_id] = sample_candidates
-                positive_count += len(self.positive_samples[sample_id])
+                if len(sample_candidates) > 0:
+                    self.positive_samples[sample_id] = sample_candidates
+                positive_count += len(sample_candidates)
 
         print('%d samples constructed.' % positive_count)
         return
@@ -119,9 +120,10 @@ class DmTripletTrainDataset(data.Dataset):
             return self.py_word_to_ix['UNK']
 
     def __getitem__(self, index):
-        sample = self.all_sentences[index]
+        sample_id = list(self.positive_samples.keys())[index]
+        sample = self.all_sentences[self.sent_to_idx[sample_id]]
         positive_id = random.choice(self.positive_samples[sample['raw_id']])
-        positive = self.sent_to_idx[positive_id]
+        positive = self.all_sentences[self.sent_to_idx[positive_id]]
         negative = negative_sampling(sample, self.all_sentences)
 
         sentence_anchor = tokenize(sample['content'], self.max_len, self.word2ix)
@@ -149,7 +151,7 @@ class DmTripletTrainDataset(data.Dataset):
         return sample_dict
 
     def __len__(self):
-        return len(self.all_sentences)
+        return len(list(self.positive_samples.keys()))
 
     def save_vocab(self, path):
         vocab = []
