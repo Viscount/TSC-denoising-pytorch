@@ -51,7 +51,7 @@ def train(dm_train_set, dm_test_set):
 
     EMBEDDING_DIM = 200
     batch_size = 128
-    epoch_num = 50
+    epoch_num = 100
     max_acc = 0
     model_save_path = '.tmp/model_save/triplet_embed.model'
 

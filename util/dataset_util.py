@@ -108,6 +108,7 @@ def build(samples, train_select, test_select, dataset_type):
         train_samples = []
         test_samples = []
         unlabeled_samples = []
+        max_len = 0
 
         for episode_lvl_samples in samples:
             for sample in episode_lvl_samples:

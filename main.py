@@ -35,8 +35,6 @@ def set_random_seed(seed):
 
 def preprocess(season_id):
     # load data from csv
-    # seasons = pd.read_csv("./data/bangumi.csv", delimiter=",", encoding="utf-8")
-    # episodes = pd.read_csv("./data/episode.csv", delimiter=",", encoding="utf-8")
     danmaku_complete = pd.read_csv("./data/danmaku_complete.csv", delimiter="\t", encoding="utf-8",
                                    quoting=csv.QUOTE_NONE, low_memory=False)
     danmaku_complete = danmaku_complete.fillna(-1)
@@ -51,8 +49,8 @@ def preprocess(season_id):
 
     print('Dataset Exporting...')
 
-    pickle.dump(dm_train_set, open('./tmp/' + season_id + '_' + dataset_type + '_train_dataset.pkl', 'wb'), protocol=pickle.HIGHEST_PROTOCOL)
-    pickle.dump(dm_test_set, open('./tmp/' + season_id + '_' + dataset_type + '_test_dataset.pkl', 'wb'), protocol=pickle.HIGHEST_PROTOCOL)
+    pickle.dump(dm_train_set, open('./tmp/' + season_id + '_' + dataset_type + '_train_dataset.pkl', 'wb'))
+    pickle.dump(dm_test_set, open('./tmp/' + season_id + '_' + dataset_type + '_test_dataset.pkl', 'wb'))
 
     dataset_type = 'triplet'
 
@@ -60,20 +58,29 @@ def preprocess(season_id):
 
     print('Dataset Exporting...')
 
-    pickle.dump(dm_train_set, open('./tmp/' + season_id + '_' + dataset_type + '_train_dataset.pkl', 'wb'), protocol=pickle.HIGHEST_PROTOCOL)
-    pickle.dump(dm_test_set, open('./tmp/' + season_id + '_' + dataset_type + '_test_dataset.pkl', 'wb'), protocol=pickle.HIGHEST_PROTOCOL)
+    pickle.dump(dm_train_set, open('./tmp/' + season_id + '_' + dataset_type + '_train_dataset.pkl', 'wb'))
+    pickle.dump(dm_test_set, open('./tmp/' + season_id + '_' + dataset_type + '_test_dataset.pkl', 'wb'))
+
+    dataset_type = 'seperate'
+
+    train_samples, test_samples, unlabeled_samples = dataset.build(samples, train_select, test_select, dataset_type)
+
+    print('Dataset Exporting...')
+
+    pickle.dump(train_samples, open('./tmp/train_samples.pkl', 'wb'))
+    pickle.dump(test_samples, open('./tmp/test_samples.pkl', 'wb'))
+    pickle.dump(unlabeled_samples, open('./tmp/unlabeled_samples.pkl', 'wb'))
 
 
 if __name__ == "__main__":
     # set random seed
-    set_random_seed(2333)
-    # season_id = '24581'
-    season_id = '24567'
-    preprocess(season_id)
+    set_random_seed(711)
+    season_id = '24581'
+    # preprocess(season_id)
 
     # load dataset
-    train_set = pickle.load(open('./tmp/' + season_id + '_triplet_train_dataset.pkl', 'rb'), protocol=pickle.HIGHEST_PROTOCOL)
-    test_set = pickle.load(open('./tmp/' + season_id + 'triplet_test_dataset.pkl', 'rb'), protocol=pickle.HIGHEST_PROTOCOL)
+    train_set = pickle.load(open('./tmp/' + season_id + '_triplet_train_dataset.pkl', 'rb'))
+    test_set = pickle.load(open('./tmp/' + season_id + '_triplet_test_dataset.pkl', 'rb'))
     print(type(train_set))
     print(type(test_set))
 
@@ -89,6 +96,6 @@ if __name__ == "__main__":
 
     # e2e_we.train(train_set, test_set)
     # e2e_cnn.train(train_set, test_set)
-    # e2e_pycnn.train(train_set, test_set)
+    e2e_pycnn.train(train_set, test_set)
     # e2e_sa.train(train_set, test_set)
-    e2e_rnn.train(train_set, test_set)
+    # e2e_rnn.train(train_set, test_set)

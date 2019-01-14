@@ -96,7 +96,9 @@ def train(dm_train_set, dm_test_set):
     feature_dim = 50
     max_len = 49
     batch_size = 128
-    epoch_num = 30
+    epoch_num = 50
+    max_acc = 0
+    max_v_acc = 0
 
     dm_dataloader = data.DataLoader(
         dataset=dm_train_set,
@@ -132,7 +134,7 @@ def train(dm_train_set, dm_test_set):
                 {'params': model.dynamic_embedding.parameters(), 'lr': 1e-4}
             ], lr=1e-3, betas=(0.9, 0.99))
 
-    logging = True
+    logging = False
     if logging:
         writer = SummaryWriter()
 
@@ -179,10 +181,8 @@ def train(dm_train_set, dm_test_set):
 
             alpha = stg.dynamic_alpha(embedding_loss, classify_loss)
             loss = alpha * embedding_loss + (1-alpha) * classify_loss
-            # loss = classify_loss
-            # loss = embedding_loss
 
-            if batch_idx % 1000 == 0:
+            if batch_idx % 100 == 0:
                 accuracy = valid_util.running_accuracy(final_pred, label, mask_)
                 print('epoch: %d batch %d : loss: %4.6f embed-loss: %4.6f class-loss: %4.6f accuracy: %4.6f'
                       % (epoch, batch_idx, loss.item(), embedding_loss.item(), classify_loss.item(), accuracy))
@@ -191,7 +191,7 @@ def train(dm_train_set, dm_test_set):
                         'Total Loss': loss,
                         'Embedding Loss': embedding_loss,
                         'Classify Loss': classify_loss
-                    }, epoch * 10 + batch_idx // 1000)
+                    }, epoch * 10 + batch_idx // 100)
             loss.backward()
             optimizer.step()
 
@@ -208,13 +208,19 @@ def train(dm_train_set, dm_test_set):
                 '1-F1-score': result_dict['1']['f1-score']
             }, epoch)
             writer.add_scalar('sa_data/accuracy', result_dict['accuracy'], epoch)
-        history = valid_util.validate(model, dm_test_set, dm_test_dataloader, mode='detail', pred_history=history)
-        pickle.dump(history, open('./tmp/e2e_sa_history.pkl', 'wb'))
+        accuracy, history = valid_util.validate(model, dm_test_set, dm_test_dataloader, mode='detail', pred_history=history)
+        # pickle.dump(history, open('./tmp/e2e_sa_history.pkl', 'wb'))
+        if accuracy > max_acc:
+            max_acc = accuracy
+            # torch.save(model.state_dict(), model_save_path)
 
-        # dm_valid_set = pickle.load(open('./tmp/e2e_we_valid_dataset.pkl', 'rb'))
-        # valid_util.validate(model, dm_valid_set, mode='output')
+        dm_valid_set = pickle.load(open('./tmp/triplet_valid_dataset.pkl', 'rb'))
+        v_acc = valid_util.validate(model, dm_valid_set, mode='output')
+        if v_acc > max_v_acc:
+            max_v_acc = v_acc
 
     if logging:
         writer.close()
-
+    print("Max Accuracy: %4.6f" % max_acc)
+    print("Max Validation Accuracy: %4.6f" % max_v_acc)
     return

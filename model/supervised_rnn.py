@@ -22,6 +22,9 @@ def train(dm_train_set, dm_test_set):
     batch_size = 128
     epoch_num = 100
     RNN_type = 'GRU'
+    max_acc = 0
+    max_v_acc = 0
+    model_save_path = '.tmp/model_save/straight_RNN.model'
 
     dm_dataloader = data.DataLoader(
         dataset=dm_train_set,
@@ -41,8 +44,8 @@ def train(dm_train_set, dm_test_set):
 
     model = E2ERNNModeler(dm_train_set.vocab_size(), EMBEDDING_DIM, hidden_size, RNN_type)
     print(model)
-    # init_weight = np.loadtxt("./tmp/unigram_weights.txt")
-    # model.init_emb(init_weight)
+    init_weight = np.loadtxt("./tmp/24581_we_weights.txt")
+    model.init_emb(init_weight)
     if torch.cuda.is_available():
         print("CUDA : On")
         model.cuda()
@@ -57,7 +60,7 @@ def train(dm_train_set, dm_test_set):
                 {'params': model.embedding.parameters(), 'lr': 1e-3}
             ], lr=1e-3, betas=(0.9, 0.99))
 
-    logging = True
+    logging = False
     if logging:
         writer = SummaryWriter()
         log_name = 'Direct_'+RNN_type
@@ -97,10 +100,17 @@ def train(dm_train_set, dm_test_set):
                 '1-F1-score': result_dict['1']['f1-score']
             }, epoch)
             writer.add_scalar(log_name + '_data/accuracy', result_dict['accuracy'], epoch)
-        valid_util.validate(model, dm_test_set, dm_test_dataloader, mode='output')
+        accuracy = valid_util.validate(model, dm_test_set, dm_test_dataloader, mode='output')
+        if accuracy > max_acc:
+            max_acc = accuracy
 
         dm_valid_set = pickle.load(open('./tmp/unigram_valid_dataset.pkl', 'rb'))
-        valid_util.validate(model, dm_valid_set, mode='output')
+        v_acc = valid_util.validate(model, dm_valid_set, mode='output')
+        if v_acc > max_v_acc:
+            max_v_acc = v_acc
+
     if logging:
         writer.close()
+    print("Max Accuracy: %4.6f" % max_acc)
+    print("Max Validation Accuracy: %4.6f" % max_v_acc)
     return

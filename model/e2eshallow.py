@@ -46,6 +46,7 @@ def train(dm_train_set, dm_test_set):
     batch_size = 128
     epoch_num = 150
     max_acc = 0
+    max_v_acc = 0
     model_save_path = '.tmp/model_save/straight_embed.model'
 
     dm_dataloader = data.DataLoader(
@@ -66,8 +67,8 @@ def train(dm_train_set, dm_test_set):
 
     model = EmbeddingE2EModeler(dm_train_set.vocab_size(), EMBEDDING_DIM)
     print(model)
-    # init_weight = np.loadtxt("./tmp/unigram_weights.txt")
-    # model.init_emb(init_weight)
+    init_weight = np.loadtxt("./tmp/24581_we_weights.txt")
+    model.init_emb(init_weight)
     if torch.cuda.is_available():
         print("CUDA : On")
         model.cuda()
@@ -119,9 +120,13 @@ def train(dm_train_set, dm_test_set):
             max_acc = accuracy
             # torch.save(model.state_dict(), model_save_path)
 
-        # dm_valid_set = pickle.load(open('./tmp/unigram_valid_dataset.pkl', 'rb'))
-        # valid_util.validate(model, dm_valid_set, mode='output')
+        dm_valid_set = pickle.load(open('./tmp/unigram_valid_dataset.pkl', 'rb'))
+        v_acc = valid_util.validate(model, dm_valid_set, mode='output')
+        if v_acc > max_v_acc:
+            max_v_acc = v_acc
+
     if logging:
         writer.close()
     print("Max Accuracy: %4.6f" % max_acc)
+    print("Max Validation Accuracy: %4.6f" % max_v_acc)
     return

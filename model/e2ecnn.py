@@ -74,8 +74,9 @@ def train(dm_train_set, dm_test_set):
     max_len = 49
     windows_size = [1, 2, 3, 4]
     batch_size = 128
-    epoch_num = 20
+    epoch_num = 50
     max_acc = 0
+    max_v_acc = 0
     model_save_path = '.tmp/model_save/cnn.model'
 
     dm_dataloader = data.DataLoader(
@@ -112,7 +113,7 @@ def train(dm_train_set, dm_test_set):
                 {'params': model.dynamic_embedding.parameters(), 'lr': 1e-4}
             ], lr=1e-3, betas=(0.9, 0.99))
 
-    logging = True
+    logging = False
     if logging:
         writer = SummaryWriter()
 
@@ -120,9 +121,9 @@ def train(dm_train_set, dm_test_set):
 
     for epoch in range(epoch_num):
 
-        if (epoch+1) % 3 == 0:
+        if (epoch+1) % 2 == 0:
             for param_group in optimizer.param_groups:
-                param_group['lr'] = param_group['lr'] * 0.5
+                param_group['lr'] = param_group['lr'] * 0.8
 
         for batch_idx, sample_dict in enumerate(dm_dataloader):
             anchor = Variable(torch.LongTensor(sample_dict['anchor']))
@@ -165,7 +166,7 @@ def train(dm_train_set, dm_test_set):
             alpha = stg.dynamic_alpha(embedding_loss, classify_loss)
             loss = alpha * embedding_loss + (1-alpha) * classify_loss
 
-            if batch_idx % 1000 == 0:
+            if batch_idx % 100 == 0:
                 accuracy = valid_util.running_accuracy(final_pred, label, mask_)
                 print('epoch: %d batch %d : loss: %4.6f embed-loss: %4.6f class-loss: %4.6f accuracy: %4.6f'
                       % (epoch, batch_idx, loss.item(), embedding_loss.item(), classify_loss.item(), accuracy))
@@ -174,7 +175,7 @@ def train(dm_train_set, dm_test_set):
                         'Total Loss': loss,
                         'Embedding Loss': embedding_loss,
                         'Classify Loss': classify_loss
-                    }, epoch * 10 + batch_idx // 1000)
+                    }, epoch * 10 + batch_idx // 100)
             loss.backward()
             optimizer.step()
 
@@ -198,9 +199,12 @@ def train(dm_train_set, dm_test_set):
             # torch.save(model.state_dict(), model_save_path)
 
         dm_valid_set = pickle.load(open('./tmp/triplet_valid_dataset.pkl', 'rb'))
-        valid_util.validate(model, dm_valid_set, mode='output')
+        v_acc = valid_util.validate(model, dm_valid_set, mode='output')
+        if v_acc > max_v_acc:
+            max_v_acc = v_acc
 
     if logging:
         writer.close()
     print("Max Accuracy: %4.6f" % max_acc)
+    print("Max Validation Accuracy: %4.6f" % max_v_acc)
     return

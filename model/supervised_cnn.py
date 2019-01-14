@@ -23,6 +23,9 @@ def train(dm_train_set, dm_test_set):
     windows_size = [1, 2, 3, 4]
     batch_size = 128
     epoch_num = 50
+    max_acc = 0
+    max_v_acc = 0
+    model_save_path = '.tmp/model_save/straight_CNN.model'
 
     dm_dataloader = data.DataLoader(
         dataset=dm_train_set,
@@ -42,8 +45,8 @@ def train(dm_train_set, dm_test_set):
 
     model = E2ECNNModeler(dm_train_set.vocab_size(), EMBEDDING_DIM, feature_dim, windows_size, max_len)
     print(model)
-    # init_weight = np.loadtxt("./tmp/24581_we_weights.txt")
-    # model.init_emb(init_weight)
+    init_weight = np.loadtxt("./tmp/24581_we_weights.txt")
+    model.init_emb(init_weight)
     if torch.cuda.is_available():
         print("CUDA : On")
         model.cuda()
@@ -58,7 +61,7 @@ def train(dm_train_set, dm_test_set):
                 {'params': model.dynamic_embedding.parameters(), 'lr': 1e-4}
             ], lr=1e-3, betas=(0.9, 0.99))
 
-    logging = True
+    logging = False
     if logging:
         writer = SummaryWriter()
         log_name = 'Direct_CNN'
@@ -67,9 +70,9 @@ def train(dm_train_set, dm_test_set):
 
     for epoch in range(epoch_num):
 
-        if (epoch+1) % 3 == 0:
-            for param_group in optimizer.param_groups:
-                param_group['lr'] = param_group['lr'] * 0.5
+        # if (epoch+1) % 3 == 0:
+        #     for param_group in optimizer.param_groups:
+        #         param_group['lr'] = param_group['lr'] * 0.5
 
         for batch_idx, sample_dict in enumerate(dm_dataloader):
             sentence = Variable(torch.LongTensor(sample_dict['sentence']))
@@ -103,10 +106,16 @@ def train(dm_train_set, dm_test_set):
                 '1-F1-score': result_dict['1']['f1-score']
             }, epoch)
             writer.add_scalar(log_name + '_data/accuracy', result_dict['accuracy'], epoch)
-        valid_util.validate(model, dm_test_set, dm_test_dataloader, mode='output')
+        accuracy = valid_util.validate(model, dm_test_set, dm_test_dataloader, mode='output')
+        if accuracy > max_acc:
+            max_acc = accuracy
 
         dm_valid_set = pickle.load(open('./tmp/unigram_valid_dataset.pkl', 'rb'))
-        valid_util.validate(model, dm_valid_set, mode='output')
+        v_acc = valid_util.validate(model, dm_valid_set, mode='output')
+        if v_acc > max_v_acc:
+            max_v_acc = v_acc
     if logging:
         writer.close()
+    print("Max Accuracy: %4.6f" % max_acc)
+    print("Max Validation Accuracy: %4.6f" % max_v_acc)
     return

@@ -110,9 +110,10 @@ def train(dm_train_set, dm_test_set):
     max_len = 49
     windows_size = [1, 2, 3, 4]
     batch_size = 128
-    epoch_num = 20
+    epoch_num = 50
     fusion_type = 'concat'
     max_acc = 0
+    max_v_acc = 0
     model_save_path = '.tmp/model_save/pycnn_' + fusion_type + '.model'
 
     dm_dataloader = data.DataLoader(
@@ -150,9 +151,9 @@ def train(dm_train_set, dm_test_set):
 
     optimizer = optim.Adam([
                 {'params': other_params},
-                {'params': model.dynamic_embedding.parameters(), 'lr': 1e-5},
-                {'params': model.py_embedding.parameters(), 'lr': 1e-5}
-            ], lr=1e-4, betas=(0.9, 0.99))
+                {'params': model.dynamic_embedding.parameters(), 'lr': 1e-4},
+                {'params': model.py_embedding.parameters(), 'lr': 1e-4}
+            ], lr=1e-3, betas=(0.9, 0.99))
 
     logging = False
     if logging:
@@ -163,9 +164,9 @@ def train(dm_train_set, dm_test_set):
 
     for epoch in range(epoch_num):
 
-        if (epoch+1) % 5 == 0:
+        if (epoch+1) % 2 == 0:
             for param_group in optimizer.param_groups:
-                param_group['lr'] = param_group['lr'] * 0.1
+                param_group['lr'] = param_group['lr'] * 0.8
 
         for batch_idx, sample_dict in enumerate(dm_dataloader):
             with autograd.detect_anomaly():
@@ -225,7 +226,7 @@ def train(dm_train_set, dm_test_set):
                             'Total Loss': loss,
                             'Embedding Loss': embedding_loss,
                             'Classify Loss': classify_loss
-                        }, epoch * 10 + batch_idx // 1000)
+                        }, epoch * 10 + batch_idx // 100)
                 loss.backward()
                 optimizer.step()
 
@@ -249,10 +250,13 @@ def train(dm_train_set, dm_test_set):
             max_acc = accuracy
             # torch.save(model.state_dict(), model_save_path)
 
-        # dm_valid_set = pickle.load(open('./tmp/triplet_valid_dataset.pkl', 'rb'))
-        # valid_util.validate(model, dm_valid_set, mode='output', py=True)
+        dm_valid_set = pickle.load(open('./tmp/triplet_valid_dataset.pkl', 'rb'))
+        v_acc = valid_util.validate(model, dm_valid_set, mode='output', py=True)
+        if v_acc > max_v_acc:
+            max_v_acc = v_acc
 
     if logging:
         writer.close()
     print("Max Accuracy: %4.6f" % max_acc)
+    print("Max Validation Accuracy: %4.6f" % max_v_acc)
     return
