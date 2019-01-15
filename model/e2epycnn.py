@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import os
 import torch
 from torch import nn
 import torch.nn.functional as F
@@ -59,6 +60,8 @@ class E2ECNNModeler(nn.Module):
             pre_train_weight = torch.FloatTensor(pre_train_weight)
             self.static_embedding = nn.Embedding.from_pretrained(pre_train_weight, freeze=True)
             self.dynamic_embedding.weight.data = pre_train_weight
+        else:
+            print('Weight data shape mismatch, using default init.')
         return
 
     def init_py_emb(self, pre_train_weight):
@@ -67,6 +70,8 @@ class E2ECNNModeler(nn.Module):
             pre_train_weight[1:] = np.random.uniform(-init_range, init_range, pre_train_weight.shape[1])
             pre_train_weight = torch.FloatTensor(pre_train_weight)
             self.py_embedding.weight.data = pre_train_weight
+        else:
+            print('Weight data shape mismatch, using default init.')
         return
 
     def embed(self, sentence, sent_py):
@@ -103,7 +108,7 @@ class E2ECNNModeler(nn.Module):
         return h3
 
 
-def train(dm_train_set, dm_test_set):
+def train(season_id, dm_train_set, dm_test_set):
 
     EMBEDDING_DIM = 200
     feature_dim = 50
@@ -135,9 +140,9 @@ def train(dm_train_set, dm_test_set):
     model = E2ECNNModeler(dm_train_set.vocab_size(), dm_train_set.py_vocab_size(),
                           EMBEDDING_DIM, feature_dim, windows_size, max_len, fusion_type)
     print(model)
-    init_weight = np.loadtxt("./tmp/24581_we_weights.txt")
+    init_weight = np.loadtxt(os.path.join('./tmp', season_id, 'we_weights.txt'))
     model.init_emb(init_weight)
-    init_weight = np.loadtxt("./tmp/24581_py_weights.txt")
+    init_weight = np.loadtxt(os.path.join('./tmp', season_id, 'py_weights.txt'))
     model.init_py_emb(init_weight)
     if torch.cuda.is_available():
         print("CUDA : On")
@@ -155,7 +160,7 @@ def train(dm_train_set, dm_test_set):
                 {'params': model.py_embedding.parameters(), 'lr': 1e-4}
             ], lr=1e-3, betas=(0.9, 0.99))
 
-    logging = False
+    logging = True
     if logging:
         writer = SummaryWriter()
         log_name = 'pycnn_' + fusion_type

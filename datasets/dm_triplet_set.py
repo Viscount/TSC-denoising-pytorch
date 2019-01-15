@@ -6,14 +6,14 @@ import numpy as np
 import pandas as pd
 import collections
 import random
+import Levenshtein.StringMatcher
 
 
 class DmTripletTrainDataset(data.Dataset):
-    def __init__(self, dm_samples, min_count, max_len, context_size, min_common_words, max_samples, dictionary=None):
+    def __init__(self, dm_samples, min_count, max_len, context_size, max_distance, dictionary=None):
         self.max_len = max_len
         self.min_count = min_count
-        self.min_common_words = min_common_words
-        self.max_samples = max_samples
+        self.max_distance = max_distance
         self.all_sentences = []
         self.sent_to_idx = dict()
         self.positive_samples = dict()
@@ -92,7 +92,7 @@ class DmTripletTrainDataset(data.Dataset):
                 sample_candidates = []
                 while sample_['playback_time'] <= playback_time + context_size:
                     if sample['raw_id'] != sample_['raw_id'] and \
-                            common_words(py_content, sample_['pinyin']) >= min_common_words:
+                            distance(py_content, sample_['pinyin']) <= max_distance:
                         sample_candidates.append(sample_['raw_id'])
                     it += 1
                     if it >= len(episode_lvl_samples):
@@ -223,6 +223,12 @@ def common_words(content_a, content_b):
         if word in word_set:
             count += 1
     return count
+
+
+def distance(content_a, content_b):
+    full_str_a = ''.join([word for word in content_a])
+    full_str_b = ''.join([word for word in content_b])
+    return Levenshtein.distance(full_str_a, full_str_b)
 
 
 def tokenize(sentence, max_len, dictionary_func):

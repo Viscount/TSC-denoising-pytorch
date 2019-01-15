@@ -60,11 +60,11 @@ if __name__ == "__main__":
     # danmaku_selected = danmaku_complete[danmaku_complete['season_id'] == '24581']
     # train(danmaku_selected, "24581_dm_word_embedding.model")
 
-    word_model = Word2Vec.load("../tmp/24581_dm_word_embedding.model")
+    word_model = Word2Vec.load("../tmp/24581/py_word_embedding.model")
     word_dim = 200
     print(len(word_model.wv.vocab))
 
-    dataset = pickle.load(open('../tmp/unigram_train_dataset.pkl', 'rb'))
-    dictionary = dataset.word_to_ix
+    dataset = pickle.load(open('../tmp/24581/triplet_train_dataset.pkl', 'rb'))
+    dictionary = dataset.py_word_to_ix
     weight = get_weight(word_model, dictionary, word_dim)
-    np.savetxt("../tmp/unigram_weights.txt", weight)
+    np.savetxt("../tmp/24581/py_weights.txt", weight)

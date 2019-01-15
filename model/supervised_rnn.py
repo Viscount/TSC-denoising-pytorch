@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import os
 import torch
 from torch import nn
 import torch.nn.functional as F
@@ -15,7 +16,7 @@ from tensorboardX import SummaryWriter
 from model.e2ernn import E2ERNNModeler
 
 
-def train(dm_train_set, dm_test_set):
+def train(season_id, dm_train_set, dm_test_set):
 
     EMBEDDING_DIM = 200
     hidden_size = 100
@@ -44,7 +45,7 @@ def train(dm_train_set, dm_test_set):
 
     model = E2ERNNModeler(dm_train_set.vocab_size(), EMBEDDING_DIM, hidden_size, RNN_type)
     print(model)
-    init_weight = np.loadtxt("./tmp/24581_we_weights.txt")
+    init_weight = np.loadtxt(os.path.join('./tmp', season_id, 'unigram_weights.txt'))
     model.init_emb(init_weight)
     if torch.cuda.is_available():
         print("CUDA : On")
@@ -60,7 +61,7 @@ def train(dm_train_set, dm_test_set):
                 {'params': model.embedding.parameters(), 'lr': 1e-3}
             ], lr=1e-3, betas=(0.9, 0.99))
 
-    logging = False
+    logging = True
     if logging:
         writer = SummaryWriter()
         log_name = 'Direct_'+RNN_type
@@ -104,7 +105,7 @@ def train(dm_train_set, dm_test_set):
         if accuracy > max_acc:
             max_acc = accuracy
 
-        dm_valid_set = pickle.load(open('./tmp/unigram_valid_dataset.pkl', 'rb'))
+        dm_valid_set = pickle.load(open(os.path.join('./tmp', season_id, 'unigram_valid_dataset.pkl'), 'rb'))
         v_acc = valid_util.validate(model, dm_valid_set, mode='output')
         if v_acc > max_v_acc:
             max_v_acc = v_acc

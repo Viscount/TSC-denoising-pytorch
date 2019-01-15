@@ -81,10 +81,9 @@ def build(samples, train_select, test_select, dataset_type):
 
     if dataset_type == 'triplet':
         context_size = 2.5
-        common_words_min_count = 3
+        max_distance = 15
         min_count = 3
         max_len = 0
-        max_samples = 5
 
         train_samples = []
         test_samples = []
@@ -99,7 +98,7 @@ def build(samples, train_select, test_select, dataset_type):
                     episode_lvl_samples_.append(sample)
             train_samples.append(episode_lvl_samples_)
 
-        dm_train_set = DmTripletTrainDataset(train_samples, min_count, max_len, context_size, common_words_min_count, max_samples)
+        dm_train_set = DmTripletTrainDataset(train_samples, min_count, max_len, context_size, max_distance)
         dm_test_set = DmTripletTestDataset(test_samples, max_len, dm_train_set.word_to_ix, dm_train_set.py_word_to_ix)
 
         return dm_train_set, dm_test_set
@@ -157,6 +156,6 @@ def compare_dataset(dataset, dataset_):
 
 
 if __name__ == "__main__":
-    dataset = pickle.load(open('../tmp/24581_triplet_test_dataset.pkl', 'rb'))
+    dataset = pickle.load(open('../tmp/24581/triplet_test_dataset.pkl', 'rb'))
     dateset_ = pickle.load(open('../tmp/unigram_test_dataset.pkl', 'rb'))
     compare_dataset(dataset, dateset_)

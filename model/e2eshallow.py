@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import os
 import torch
 from torch import nn
 import torch.nn.functional as F
@@ -27,6 +28,8 @@ class EmbeddingE2EModeler(nn.Module):
         if pre_train_weight.shape == self.embedding.weight.data.shape:
             pre_train_weight = torch.FloatTensor(pre_train_weight)
             self.embedding.weight.data = pre_train_weight
+        else:
+            print('Weight data shape mismatch, using default init.')
         return
 
     def forward(self, sentence):
@@ -40,7 +43,7 @@ class EmbeddingE2EModeler(nn.Module):
         return h3
 
 
-def train(dm_train_set, dm_test_set):
+def train(season_id, dm_train_set, dm_test_set):
 
     EMBEDDING_DIM = 200
     batch_size = 128
@@ -67,7 +70,7 @@ def train(dm_train_set, dm_test_set):
 
     model = EmbeddingE2EModeler(dm_train_set.vocab_size(), EMBEDDING_DIM)
     print(model)
-    init_weight = np.loadtxt("./tmp/24581_we_weights.txt")
+    init_weight = np.loadtxt(os.path.join('./tmp', season_id, 'unigram_weights.txt'))
     model.init_emb(init_weight)
     if torch.cuda.is_available():
         print("CUDA : On")
@@ -120,7 +123,7 @@ def train(dm_train_set, dm_test_set):
             max_acc = accuracy
             # torch.save(model.state_dict(), model_save_path)
 
-        dm_valid_set = pickle.load(open('./tmp/unigram_valid_dataset.pkl', 'rb'))
+        dm_valid_set = pickle.load(open(os.path.join('./tmp', season_id, 'unigram_valid_dataset.pkl'), 'rb'))
         v_acc = valid_util.validate(model, dm_valid_set, mode='output')
         if v_acc > max_v_acc:
             max_v_acc = v_acc

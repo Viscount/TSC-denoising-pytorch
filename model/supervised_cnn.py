@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import os
 import torch
 from torch import nn
 import torch.nn.functional as F
@@ -15,14 +16,14 @@ from tensorboardX import SummaryWriter
 from model.e2ecnn import E2ECNNModeler
 
 
-def train(dm_train_set, dm_test_set):
+def train(season_id, dm_train_set, dm_test_set):
 
     EMBEDDING_DIM = 200
     feature_dim = 50
     max_len = 49
     windows_size = [1, 2, 3, 4]
     batch_size = 128
-    epoch_num = 50
+    epoch_num = 100
     max_acc = 0
     max_v_acc = 0
     model_save_path = '.tmp/model_save/straight_CNN.model'
@@ -45,7 +46,7 @@ def train(dm_train_set, dm_test_set):
 
     model = E2ECNNModeler(dm_train_set.vocab_size(), EMBEDDING_DIM, feature_dim, windows_size, max_len)
     print(model)
-    init_weight = np.loadtxt("./tmp/24581_we_weights.txt")
+    init_weight = np.loadtxt(os.path.join('./tmp', season_id, 'unigram_weights.txt'))
     model.init_emb(init_weight)
     if torch.cuda.is_available():
         print("CUDA : On")
@@ -61,7 +62,7 @@ def train(dm_train_set, dm_test_set):
                 {'params': model.dynamic_embedding.parameters(), 'lr': 1e-4}
             ], lr=1e-3, betas=(0.9, 0.99))
 
-    logging = False
+    logging = True
     if logging:
         writer = SummaryWriter()
         log_name = 'Direct_CNN'
@@ -70,9 +71,9 @@ def train(dm_train_set, dm_test_set):
 
     for epoch in range(epoch_num):
 
-        # if (epoch+1) % 3 == 0:
+        # if (epoch+1) % 2 == 0:
         #     for param_group in optimizer.param_groups:
-        #         param_group['lr'] = param_group['lr'] * 0.5
+        #         param_group['lr'] = param_group['lr'] * 0.8
 
         for batch_idx, sample_dict in enumerate(dm_dataloader):
             sentence = Variable(torch.LongTensor(sample_dict['sentence']))
@@ -110,7 +111,7 @@ def train(dm_train_set, dm_test_set):
         if accuracy > max_acc:
             max_acc = accuracy
 
-        dm_valid_set = pickle.load(open('./tmp/unigram_valid_dataset.pkl', 'rb'))
+        dm_valid_set = pickle.load(open(os.path.join('./tmp', season_id, 'unigram_valid_dataset.pkl'), 'rb'))
         v_acc = valid_util.validate(model, dm_valid_set, mode='output')
         if v_acc > max_v_acc:
             max_v_acc = v_acc
