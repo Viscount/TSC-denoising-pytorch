@@ -43,7 +43,7 @@ def preprocess(season_id):
     danmaku_selected = danmaku_complete[danmaku_complete['season_id'] == season_id]
 
     samples, train_select, test_select = dataset.dataset_split(danmaku_selected)
-    #
+
     # pickle.dump(samples, open('./tmp/' + season_id + '_samples.pkl', 'wb'))
     # pickle.dump(train_select, open('./tmp/' + season_id + '_train_select.pkl', 'wb'))
     # pickle.dump(test_select, open('./tmp/' + season_id + '_test_select.pkl', 'wb'))
@@ -84,7 +84,7 @@ def preprocess(season_id):
 
 if __name__ == "__main__":
     # set random seed
-    set_random_seed(19941207)
+    set_random_seed(2333)
     season_id = '24581'
     # preprocess(season_id)
 
@@ -101,12 +101,16 @@ if __name__ == "__main__":
     # skip_gram.train(dataset)
     # tsc_embed.train(dataset)
 
+    # models that fed with unigram dataset
+
     # e2e.train(season_id, train_set, test_set)
     # sup_rnn.train(season_id, train_set, test_set)
     # sup_cnn.train(season_id, train_set, test_set)
 
+    # models that fed with triplet dataset
+
     # e2e_we.train(train_set, test_set)
     # e2e_cnn.train(train_set, test_set)
-    e2e_pycnn.train(season_id, train_set, test_set)
+    # e2e_pycnn.train(season_id, train_set, test_set)
     # e2e_sa.train(train_set, test_set)
     # e2e_rnn.train(train_set, test_set)

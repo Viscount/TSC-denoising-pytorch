@@ -257,10 +257,10 @@ def train(season_id, dm_train_set, dm_test_set):
             max_acc = accuracy
             torch.save(model.state_dict(), model_save_path)
 
-        dm_valid_set = pickle.load(open('./tmp/triplet_valid_dataset.pkl', 'rb'))
-        v_acc = valid_util.validate(model, dm_valid_set, mode='output', py=True)
-        if v_acc > max_v_acc:
-            max_v_acc = v_acc
+        # dm_valid_set = pickle.load(open('./tmp/triplet_valid_dataset.pkl', 'rb'))
+        # v_acc = valid_util.validate(model, dm_valid_set, mode='output', py=True)
+        # if v_acc > max_v_acc:
+        #     max_v_acc = v_acc
 
     if logging:
         writer.close()
