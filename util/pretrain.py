@@ -5,6 +5,7 @@ from gensim.models.word2vec import Word2Vec
 import multiprocessing
 import pandas as pd
 import csv
+import os
 import numpy as np
 from util.word_segment import word_segment
 import pickle
@@ -54,17 +55,21 @@ def get_weight(model, dictionary, dim):
 
 
 if __name__ == "__main__":
+    season_id = '24581'
+
     # danmaku_complete = pd.read_csv("../data/danmaku_complete.csv", delimiter="\t", encoding="utf-8",
     #                                quoting=csv.QUOTE_NONE, low_memory=False)
     # danmaku_complete = danmaku_complete.fillna(-1)
     # danmaku_selected = danmaku_complete[danmaku_complete['season_id'] == '24581']
     # train(danmaku_selected, "24581_dm_word_embedding.model")
 
-    word_model = Word2Vec.load("../tmp/24581/py_word_embedding.model")
+    word_model = Word2Vec.load(os.path.join('../tmp', season_id, 'py_word_embedding.model'))
     word_dim = 200
     print(len(word_model.wv.vocab))
 
-    dataset = pickle.load(open('../tmp/24581/triplet_train_dataset.pkl', 'rb'))
+    dataset_type = 'triplet'
+
+    dataset = pickle.load(open(os.path.join('../tmp', season_id, dataset_type+'_train_dataset.pkl'), 'rb'))
     dictionary = dataset.py_word_to_ix
     weight = get_weight(word_model, dictionary, word_dim)
-    np.savetxt("../tmp/24581/py_weights.txt", weight)
+    np.savetxt(os.path.join('../tmp', season_id, 'py_weights.txt'), weight)

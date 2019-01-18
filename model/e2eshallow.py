@@ -36,9 +36,9 @@ class EmbeddingE2EModeler(nn.Module):
         sent_emd = self.embedding(sentence)
         sent_emd = torch.sum(sent_emd, dim=1)
         h1 = F.relu(self.fc1(sent_emd))
-        h1 = F.dropout(h1, p=0.5)
+        h1 = F.dropout(h1, p=0.5, training=self.training)
         h2 = F.relu(self.fc2(h1))
-        h2 = F.dropout(h2, p=0.5)
+        h2 = F.dropout(h2, p=0.5, training=self.training)
         h3 = self.fc3(h2)
         return h3
 
@@ -85,6 +85,7 @@ def train(season_id, dm_train_set, dm_test_set):
         writer = SummaryWriter()
 
     for epoch in range(epoch_num):
+        model.train(mode=True)
         for batch_idx, sample_dict in enumerate(dm_dataloader):
             sentence = Variable(torch.LongTensor(sample_dict['sentence']))
             label = Variable(torch.LongTensor(sample_dict['label']))
@@ -104,6 +105,7 @@ def train(season_id, dm_train_set, dm_test_set):
             loss.backward()
             optimizer.step()
 
+        model.eval()
         if logging:
             result_dict = valid_util.validate(model, dm_test_set, dm_test_dataloader, mode='report')
             writer.add_scalars(log_name + '_data/0-PRF', {

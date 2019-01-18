@@ -101,9 +101,9 @@ class E2ECNNModeler(nn.Module):
         sent_emd = self.embed(sentence, sent_py)
 
         h1 = F.relu(self.fc1(sent_emd))
-        h1 = F.dropout(h1, p=0.5)
+        h1 = F.dropout(h1, p=0.5, training=self.training)
         h2 = F.relu(self.fc2(h1))
-        h2 = F.dropout(h2, p=0.5)
+        h2 = F.dropout(h2, p=0.5, training=self.training)
         h3 = self.fc3(h2)
         return h3
 
@@ -112,14 +112,14 @@ def train(season_id, dm_train_set, dm_test_set):
 
     EMBEDDING_DIM = 200
     feature_dim = 50
-    max_len = 49
+    max_len = dm_train_set.max_len
     windows_size = [1, 2, 3, 4]
-    batch_size = 128
+    batch_size = 256
     epoch_num = 50
     fusion_type = 'concat'
     max_acc = 0
     max_v_acc = 0
-    model_save_path = '.tmp/model_save/pycnn_' + fusion_type + '.model'
+    model_save_path = './tmp/model_save/pycnn_' + fusion_type + '.model'
 
     dm_dataloader = data.DataLoader(
         dataset=dm_train_set,
@@ -156,9 +156,9 @@ def train(season_id, dm_train_set, dm_test_set):
 
     optimizer = optim.Adam([
                 {'params': other_params},
-                {'params': model.dynamic_embedding.parameters(), 'lr': 1e-4},
-                {'params': model.py_embedding.parameters(), 'lr': 1e-4}
-            ], lr=1e-3, betas=(0.9, 0.99))
+                {'params': model.dynamic_embedding.parameters(), 'lr': 1e-3},
+                {'params': model.py_embedding.parameters(), 'lr': 1e-3}
+            ], lr=1e-3, betas=(0.9, 0.99), weight_decay=1e-5)
 
     logging = True
     if logging:
@@ -169,11 +169,12 @@ def train(season_id, dm_train_set, dm_test_set):
 
     for epoch in range(epoch_num):
 
-        if (epoch+1) % 2 == 0:
+        if epoch > 0:
             for param_group in optimizer.param_groups:
                 param_group['lr'] = param_group['lr'] * 0.8
 
         for batch_idx, sample_dict in enumerate(dm_dataloader):
+            model.train(mode=True)
             with autograd.detect_anomaly():
                 anchor = Variable(torch.LongTensor(sample_dict['anchor']))
                 pos = Variable(torch.LongTensor(sample_dict['pos']))
@@ -224,8 +225,8 @@ def train(season_id, dm_train_set, dm_test_set):
 
                 if batch_idx % 100 == 0:
                     accuracy = valid_util.running_accuracy(final_pred, label, mask_)
-                    print('epoch: %d batch %d : loss: %4.6f embed-loss: %4.6f class-loss: %4.6f accuracy: %4.6f'
-                          % (epoch, batch_idx, loss.item(), embedding_loss.item(), classify_loss.item(), accuracy))
+                    print('epoch: %d batch %d : loss: %4.6f embed-loss: %4.6f class-loss: %4.6f accuracy: %4.6f num: %4.1f'
+                          % (epoch, batch_idx, loss.item(), embedding_loss.item(), classify_loss.item(), accuracy, mask_.sum()))
                     if logging:
                         writer.add_scalars(log_name+'_data/loss', {
                             'Total Loss': loss,
@@ -235,6 +236,7 @@ def train(season_id, dm_train_set, dm_test_set):
                 loss.backward()
                 optimizer.step()
 
+        model.eval()
         if logging:
             result_dict = valid_util.validate(model, dm_test_set, dm_test_dataloader, mode='report', py=True)
             writer.add_scalars(log_name+'_data/0-PRF', {
@@ -253,7 +255,7 @@ def train(season_id, dm_train_set, dm_test_set):
         # pickle.dump(history, open('./tmp/e2e_pycnn_history.pkl', 'wb'))
         if accuracy > max_acc:
             max_acc = accuracy
-            # torch.save(model.state_dict(), model_save_path)
+            torch.save(model.state_dict(), model_save_path)
 
         dm_valid_set = pickle.load(open('./tmp/triplet_valid_dataset.pkl', 'rb'))
         v_acc = valid_util.validate(model, dm_valid_set, mode='output', py=True)

@@ -48,6 +48,8 @@ def validate(model, dm_test_set, dataloader=None, mode='acc', py=False, pred_his
     elif mode == 'report':
         report_dict = classification_report(label_array, pred_array, output_dict=True)
         report_dict['accuracy'] = accuracy
+        # print('Test Accuracy: %4.6f' % accuracy)
+        # print(classification_report(label_array, pred_array, digits=4))
         return report_dict
     elif mode == 'detail':
         pred_dict = dict()

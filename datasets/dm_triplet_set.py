@@ -91,8 +91,8 @@ class DmTripletTrainDataset(data.Dataset):
                 sample_ = episode_lvl_samples[it]
                 sample_candidates = []
                 while sample_['playback_time'] <= playback_time + context_size:
-                    if sample['raw_id'] != sample_['raw_id'] and \
-                            distance(py_content, sample_['pinyin']) <= max_distance:
+                    if sample['raw_id'] != sample_['raw_id']:
+                            # and distance(py_content, sample_['pinyin']) <= max_distance:
                         sample_candidates.append(sample_['raw_id'])
                     it += 1
                     if it >= len(episode_lvl_samples):

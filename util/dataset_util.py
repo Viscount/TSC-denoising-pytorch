@@ -46,8 +46,8 @@ def dataset_split(danmaku_selected):
         samples.append(episode_lvl_samples)
 
     # train-test split
-    pos_train, pos_test = train_test_split(list(pos_label_set), test_size=0.25, shuffle=True, random_state=42)
-    neg_tran, neg_test = train_test_split(list(neg_label_set), test_size=0.25, shuffle=True, random_state=42)
+    pos_train, pos_test = train_test_split(list(pos_label_set), test_size=0.25, shuffle=True)
+    neg_tran, neg_test = train_test_split(list(neg_label_set), test_size=0.25, shuffle=True)
     train_select = set()
     train_select.update(pos_train)
     train_select.update(neg_tran)
@@ -81,7 +81,7 @@ def build(samples, train_select, test_select, dataset_type):
 
     if dataset_type == 'triplet':
         context_size = 2.5
-        max_distance = 15
+        max_distance = 20
         min_count = 3
         max_len = 0
 
@@ -126,12 +126,15 @@ def build(samples, train_select, test_select, dataset_type):
 def dataset_label_fix(dataset, fix_file):
     fix_data = pd.read_csv(fix_file, delimiter=",", encoding="utf-8")
     true_labels = dict()
+    count = 0
     for index, row in fix_data.iterrows():
         true_labels[row['raw_id']] = row['label']
     for index in range(len(dataset.samples)):
         raw_id = dataset.samples[index][0]
         if raw_id in true_labels:
             dataset.labels[index] = true_labels[raw_id]
+            count += 1
+    print("%d records to be fixed, %d done." % (len(true_labels), count))
     return dataset
 
 
@@ -143,7 +146,7 @@ def compare_dataset(dataset, dataset_):
     hit_count = 0
     miss_count = 0
     for index in range(len(dataset_.samples)):
-        raw_id = dataset.samples[index][0]
+        raw_id = dataset_.samples[index][0]
         if raw_id in id_set:
             hit_count += 1
         else:
@@ -156,6 +159,6 @@ def compare_dataset(dataset, dataset_):
 
 
 if __name__ == "__main__":
-    dataset = pickle.load(open('../tmp/24581/triplet_test_dataset.pkl', 'rb'))
-    dateset_ = pickle.load(open('../tmp/unigram_test_dataset.pkl', 'rb'))
+    dataset = pickle.load(open('../tmp/24581/unigram_test_dataset.pkl', 'rb'))
+    dateset_ = pickle.load(open('../tmp/24581/triplet_test_dataset.pkl', 'rb'))
     compare_dataset(dataset, dateset_)

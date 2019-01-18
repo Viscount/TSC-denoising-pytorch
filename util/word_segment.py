@@ -40,13 +40,17 @@ def check_replace(word):
     return word
 
 
-def word_segment(content, mode='ch'):
+def word_segment(content, mode='ch', level='word'):
     words = []
-    results = segtool.cut(content)
-    for result in results:
-        result.word = check_replace(result.word)
-        if check_type(result.flag, "REJT"):
-            words.append(result.word)
+    if level == 'word':
+        results = segtool.cut(content)
+        for result in results:
+            result.word = check_replace(result.word)
+            if check_type(result.flag, "REJT"):
+                words.append(result.word)
+    elif level == 'char':
+        for index in range(len(content)):
+            words.append(content[index])
     if mode == 'ch':
         return words
     elif mode == 'py':
@@ -55,6 +59,7 @@ def word_segment(content, mode='ch'):
         return words_
     else:
         return words
+
 
 if __name__ == "__main__":
     p = Pinyin()

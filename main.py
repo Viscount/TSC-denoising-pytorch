@@ -8,6 +8,7 @@ import pickle
 import random
 import numpy as np
 import torch
+import os
 
 import model.skip_gram as skip_gram
 import model.tsc_embed as tsc_embed
@@ -42,6 +43,15 @@ def preprocess(season_id):
     danmaku_selected = danmaku_complete[danmaku_complete['season_id'] == season_id]
 
     samples, train_select, test_select = dataset.dataset_split(danmaku_selected)
+    #
+    # pickle.dump(samples, open('./tmp/' + season_id + '_samples.pkl', 'wb'))
+    # pickle.dump(train_select, open('./tmp/' + season_id + '_train_select.pkl', 'wb'))
+    # pickle.dump(test_select, open('./tmp/' + season_id + '_test_select.pkl', 'wb'))
+
+    # samples = pickle.load(open('./tmp/'+season_id+'_samples.pkl', 'rb'))
+    # train_select = pickle.load(open('./tmp/'+season_id+'_train_select.pkl', 'rb'))
+    # test_select = pickle.load(open('./tmp/'+season_id+'_test_select.pkl', 'rb'))
+    # print(len(samples), len(train_select), len(test_select))
 
     dataset_type = 'unigram'
 
@@ -49,8 +59,8 @@ def preprocess(season_id):
 
     print('Dataset Exporting...')
 
-    pickle.dump(dm_train_set, open('./tmp/' + season_id + '_' + dataset_type + '_train_dataset.pkl', 'wb'))
-    pickle.dump(dm_test_set, open('./tmp/' + season_id + '_' + dataset_type + '_test_dataset.pkl', 'wb'))
+    pickle.dump(dm_train_set, open(os.path.join('./tmp', season_id, dataset_type + '_train_dataset.pkl'), 'wb'))
+    pickle.dump(dm_test_set, open(os.path.join('./tmp', season_id, dataset_type + '_test_dataset.pkl'), 'wb'))
 
     dataset_type = 'triplet'
 
@@ -58,44 +68,45 @@ def preprocess(season_id):
 
     print('Dataset Exporting...')
 
-    pickle.dump(dm_train_set, open('./tmp/' + season_id + '_' + dataset_type + '_train_dataset.pkl', 'wb'))
-    pickle.dump(dm_test_set, open('./tmp/' + season_id + '_' + dataset_type + '_test_dataset.pkl', 'wb'))
+    pickle.dump(dm_train_set, open(os.path.join('./tmp', season_id, dataset_type + '_train_dataset.pkl'), 'wb'))
+    pickle.dump(dm_test_set, open(os.path.join('./tmp', season_id, dataset_type + '_test_dataset.pkl'), 'wb'))
 
-    dataset_type = 'seperate'
-
-    train_samples, test_samples, unlabeled_samples = dataset.build(samples, train_select, test_select, dataset_type)
-
-    print('Dataset Exporting...')
-
-    pickle.dump(train_samples, open('./tmp/train_samples.pkl', 'wb'))
-    pickle.dump(test_samples, open('./tmp/test_samples.pkl', 'wb'))
-    pickle.dump(unlabeled_samples, open('./tmp/unlabeled_samples.pkl', 'wb'))
+    # dataset_type = 'seperate'
+    #
+    # train_samples, test_samples, unlabeled_samples = dataset.build(samples, train_select, test_select, dataset_type)
+    #
+    # print('Dataset Exporting...')
+    #
+    # pickle.dump(train_samples, open('./tmp/train_samples.pkl', 'wb'))
+    # pickle.dump(test_samples, open('./tmp/test_samples.pkl', 'wb'))
+    # pickle.dump(unlabeled_samples, open('./tmp/unlabeled_samples.pkl', 'wb'))
 
 
 if __name__ == "__main__":
     # set random seed
-    set_random_seed(711)
+    set_random_seed(19941207)
     season_id = '24581'
     # preprocess(season_id)
 
     # load dataset
-    train_set = pickle.load(open('./tmp/' + season_id + '_triplet_train_dataset.pkl', 'rb'))
-    test_set = pickle.load(open('./tmp/' + season_id + '_triplet_test_dataset.pkl', 'rb'))
+    dataset_type = 'triplet'
+    train_set = pickle.load(open(os.path.join('./tmp/', season_id, dataset_type+'_train_dataset.pkl'), 'rb'))
+    test_set = pickle.load(open(os.path.join('./tmp/', season_id, dataset_type+'_test_dataset.pkl'), 'rb'))
     print(type(train_set))
     print(type(test_set))
 
-    test_set = dataset.dataset_label_fix(test_set, './data/label-fix.csv')
+    # test_set = dataset.dataset_label_fix(test_set, './data/label-fix.csv')
 
     # train
     # skip_gram.train(dataset)
     # tsc_embed.train(dataset)
 
-    # e2e.train(train_set, test_set)
-    # sup_rnn.train(train_set, test_set)
-    # sup_cnn.train(train_set, test_set)
+    # e2e.train(season_id, train_set, test_set)
+    # sup_rnn.train(season_id, train_set, test_set)
+    # sup_cnn.train(season_id, train_set, test_set)
 
     # e2e_we.train(train_set, test_set)
     # e2e_cnn.train(train_set, test_set)
-    e2e_pycnn.train(train_set, test_set)
+    e2e_pycnn.train(season_id, train_set, test_set)
     # e2e_sa.train(train_set, test_set)
     # e2e_rnn.train(train_set, test_set)
