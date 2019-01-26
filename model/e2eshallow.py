@@ -25,9 +25,12 @@ class EmbeddingE2EModeler(nn.Module):
         self.embedding_dim = embedding_dim
 
     def init_emb(self, pre_train_weight):
+        init_range = 1 / self.embedding_dim
         if pre_train_weight.shape == self.embedding.weight.data.shape:
+            pre_train_weight[1:] = np.random.uniform(-init_range, init_range, pre_train_weight.shape[1])
             pre_train_weight = torch.FloatTensor(pre_train_weight)
             self.embedding.weight.data = pre_train_weight
+            # self.embedding = nn.Embedding.from_pretrained(pre_train_weight, freeze=True)
         else:
             print('Weight data shape mismatch, using default init.')
         return
@@ -47,7 +50,7 @@ def train(season_id, dm_train_set, dm_test_set):
 
     EMBEDDING_DIM = 200
     batch_size = 128
-    epoch_num = 150
+    epoch_num = 100
     max_acc = 0
     max_v_acc = 0
     model_save_path = '.tmp/model_save/straight_embed.model'
@@ -70,14 +73,14 @@ def train(season_id, dm_train_set, dm_test_set):
 
     model = EmbeddingE2EModeler(dm_train_set.vocab_size(), EMBEDDING_DIM)
     print(model)
-    init_weight = np.loadtxt(os.path.join('./tmp', season_id, 'unigram_weights.txt'))
-    model.init_emb(init_weight)
+    # init_weight = np.loadtxt(os.path.join('./tmp', season_id, 'unigram_weights.txt'))
+    # model.init_emb(init_weight)
     if torch.cuda.is_available():
         print("CUDA : On")
         model.cuda()
     else:
         print("CUDA : Off")
-    optimizer = optim.Adam(model.parameters(), lr=1e-4, betas=(0.9, 0.99))
+    optimizer = optim.Adam(model.parameters(), lr=1e-3, betas=(0.9, 0.99))
 
     logging = True
     if logging:

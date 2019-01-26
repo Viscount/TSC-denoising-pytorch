@@ -5,15 +5,41 @@ from util.word_segment import word_segment
 from sklearn.model_selection import train_test_split
 import pandas as pd
 import pickle
+import collections
+import os
 
 from datasets.dm_unigram_set import DmUnigramDataset
 from datasets.dm_triplet_set import DmTripletTrainDataset, DmTripletTestDataset
 
 
-def dataset_split(danmaku_selected):
+def build_vocab(words, min_count):
+    counter = {'UNK': 0}
+    counter.update(collections.Counter(words).most_common())
+    rare_words = set()
+    for word in counter:
+        if word != 'UNK' and counter[word] <= min_count:
+            rare_words.add(word)
+    for word in rare_words:
+        counter['UNK'] += counter[word]
+        counter.pop(word)
+    print('%d words founded in vocabulary' % len(counter))
+
+    word_to_ix = {
+        'EPT': 0
+    }
+    for word in counter:
+        word_to_ix[word] = len(word_to_ix)
+    return word_to_ix
+
+
+def dataset_split(danmaku_selected, season_id):
+    default_vocab_dictionary_path = os.path.join('./tmp', season_id, 'vocab.dict')
+    default_py_dictionary_path = os.path.join('./tmp', season_id, 'pinyin.dict')
     grouped = danmaku_selected.groupby('episode_id')
 
     samples = []
+    vocab_words = []
+    pinyins = []
     pos_label_set = set()
     neg_label_set = set()
 
@@ -43,7 +69,16 @@ def dataset_split(danmaku_selected):
                 'label': label
             }
             episode_lvl_samples.append(sample)
+            vocab_words.extend(words)
+            pinyins.extend(pys)
         samples.append(episode_lvl_samples)
+
+    # build vocab
+    min_count = 2
+    vocab_dictionary = build_vocab(vocab_words, min_count)
+    py_dictionary = build_vocab(pinyins, min_count)
+    pickle.dump(vocab_dictionary, open(default_vocab_dictionary_path, 'wb'))
+    pickle.dump(py_dictionary, open(default_py_dictionary_path, 'wb'))
 
     # train-test split
     pos_train, pos_test = train_test_split(list(pos_label_set), test_size=0.25, shuffle=True)
@@ -58,9 +93,14 @@ def dataset_split(danmaku_selected):
     return samples, train_select, test_select
 
 
-def build(samples, train_select, test_select, dataset_type):
+def build(season_id, samples, train_select, test_select, dataset_type):
+    default_vocab_dictionary_path = os.path.join('./tmp', season_id, 'vocab.dict')
+    default_py_dictionary_path = os.path.join('./tmp', season_id, 'pinyin.dict')
+
+    vocab_dictionary = pickle.load(open(default_vocab_dictionary_path, 'rb'))
+    py_dictionary = pickle.load(open(default_py_dictionary_path, 'rb'))
+
     if dataset_type == 'unigram':
-        min_count = 2
         max_len = 0
         train_samples = []
         test_samples = []
@@ -74,15 +114,14 @@ def build(samples, train_select, test_select, dataset_type):
                 elif sample['raw_id'] in test_select:
                     test_samples.append(sample)
 
-        dm_train_set = DmUnigramDataset(train_samples, min_count, max_len)
-        dm_test_set = DmUnigramDataset(test_samples, min_count, max_len, dictionary=dm_train_set.word_to_ix)
+        dm_train_set = DmUnigramDataset(train_samples, max_len, dictionary=vocab_dictionary)
+        dm_test_set = DmUnigramDataset(test_samples, max_len, dictionary=vocab_dictionary)
 
         return dm_train_set, dm_test_set
 
     if dataset_type == 'triplet':
         context_size = 2.5
         max_distance = 20
-        min_count = 3
         max_len = 0
 
         train_samples = []
@@ -98,8 +137,10 @@ def build(samples, train_select, test_select, dataset_type):
                     episode_lvl_samples_.append(sample)
             train_samples.append(episode_lvl_samples_)
 
-        dm_train_set = DmTripletTrainDataset(train_samples, min_count, max_len, context_size, max_distance)
-        dm_test_set = DmTripletTestDataset(test_samples, max_len, dm_train_set.word_to_ix, dm_train_set.py_word_to_ix)
+        dm_train_set = DmTripletTrainDataset(train_samples, max_len, context_size, max_distance,
+                                             dictionarys={'vocab': vocab_dictionary, 'pinyin': py_dictionary})
+        dm_test_set = DmTripletTestDataset(test_samples, max_len,
+                                           dictionarys={'vocab': vocab_dictionary, 'pinyin': py_dictionary})
 
         return dm_train_set, dm_test_set
 

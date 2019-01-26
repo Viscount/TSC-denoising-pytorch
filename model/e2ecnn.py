@@ -60,9 +60,9 @@ class E2ECNNModeler(nn.Module):
     def forward(self, sentence):
         sent_emd = self.embed(sentence)
         h1 = F.relu(self.fc1(sent_emd))
-        h1 = F.dropout(h1, p=0.5)
+        h1 = F.dropout(h1, p=0.5, training=self.training)
         h2 = F.relu(self.fc2(h1))
-        h2 = F.dropout(h2, p=0.5)
+        h2 = F.dropout(h2, p=0.5, training=self.training)
         h3 = self.fc3(h2)
         return h3
 
@@ -125,6 +125,8 @@ def train(dm_train_set, dm_test_set):
             for param_group in optimizer.param_groups:
                 param_group['lr'] = param_group['lr'] * 0.8
 
+        model.train(mode=True)
+
         for batch_idx, sample_dict in enumerate(dm_dataloader):
             anchor = Variable(torch.LongTensor(sample_dict['anchor']))
             pos = Variable(torch.LongTensor(sample_dict['pos']))
@@ -179,6 +181,7 @@ def train(dm_train_set, dm_test_set):
             loss.backward()
             optimizer.step()
 
+        model.eval()
         if logging:
             result_dict = valid_util.validate(model, dm_test_set, dm_test_dataloader, mode='report')
             writer.add_scalars('cnn_data/0-PRF', {
@@ -198,10 +201,10 @@ def train(dm_train_set, dm_test_set):
             max_acc = accuracy
             # torch.save(model.state_dict(), model_save_path)
 
-        dm_valid_set = pickle.load(open('./tmp/triplet_valid_dataset.pkl', 'rb'))
-        v_acc = valid_util.validate(model, dm_valid_set, mode='output')
-        if v_acc > max_v_acc:
-            max_v_acc = v_acc
+        # dm_valid_set = pickle.load(open('./tmp/triplet_valid_dataset.pkl', 'rb'))
+        # v_acc = valid_util.validate(model, dm_valid_set, mode='output')
+        # if v_acc > max_v_acc:
+        #     max_v_acc = v_acc
 
     if logging:
         writer.close()

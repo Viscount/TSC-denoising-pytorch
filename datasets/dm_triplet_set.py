@@ -3,71 +3,28 @@
 
 import torch.utils.data as data
 import numpy as np
-import pandas as pd
-import collections
 import random
 import Levenshtein.StringMatcher
 
 
 class DmTripletTrainDataset(data.Dataset):
-    def __init__(self, dm_samples, min_count, max_len, context_size, max_distance, dictionary=None):
+    def __init__(self, dm_samples, max_len, context_size, max_distance, dictionarys=None):
         self.max_len = max_len
-        self.min_count = min_count
         self.max_distance = max_distance
         self.all_sentences = []
         self.sent_to_idx = dict()
         self.positive_samples = dict()
 
-        if dictionary is not None:
-            self.word_to_ix = dictionary
+        if dictionarys is not None:
+            self.word_to_ix = dictionarys['vocab']
+            self.py_word_to_ix = dictionarys['pinyin']
         else:
-            print('building vocabulary...')
-            aggregate_samples = []
-            for episode_lvl_samples in dm_samples:
-                for sample in episode_lvl_samples:
-                    self.all_sentences.append(sample)
-                    self.sent_to_idx[sample['raw_id']] = len(self.all_sentences)-1
-                    aggregate_samples.extend(sample['content'])
-            counter = {'UNK': 0}
-            counter.update(collections.Counter(aggregate_samples).most_common())
-            rare_words = set()
-            for word in counter:
-                if word != 'UNK' and counter[word] <= min_count:
-                    rare_words.add(word)
-            for word in rare_words:
-                counter['UNK'] += counter[word]
-                counter.pop(word)
-            print('%d words founded in vocabulary' % len(counter))
+            print('No dictionaries')
 
-            self.vocab_counter = counter
-            self.word_to_ix = {
-                'EPT': 0
-            }
-            for word in counter:
-                self.word_to_ix[word] = len(self.word_to_ix)
-
-            print('building pinyin vocabulary...')
-            py_aggregate_samples = []
-            for episode_lvl_samples in dm_samples:
-                for sample in episode_lvl_samples:
-                    py_aggregate_samples.extend(sample['pinyin'])
-            counter = {'UNK': 0}
-            counter.update(collections.Counter(py_aggregate_samples).most_common())
-            rare_words = set()
-            for word in counter:
-                if word != 'UNK' and counter[word] <= min_count:
-                    rare_words.add(word)
-            for word in rare_words:
-                counter['UNK'] += counter[word]
-                counter.pop(word)
-            print('%d pinyin words founded in vocabulary' % len(counter))
-
-            self.py_vocab_counter = counter
-            self.py_word_to_ix = {
-                'EPT': 0
-            }
-            for word in counter:
-                self.py_word_to_ix[word] = len(self.py_word_to_ix)
+        for episode_lvl_samples in dm_samples:
+            for sample in episode_lvl_samples:
+                self.all_sentences.append(sample)
+                self.sent_to_idx[sample['raw_id']] = len(self.all_sentences)-1
 
         print('building samples...')
 
@@ -153,16 +110,6 @@ class DmTripletTrainDataset(data.Dataset):
     def __len__(self):
         return len(list(self.positive_samples.keys()))
 
-    def save_vocab(self, path):
-        vocab = []
-        for word in self.vocab_counter:
-            vocab.append({'idx': self.word_to_ix[word],
-                          'word': word,
-                          'count': self.vocab_counter[word]})
-        df = pd.DataFrame(vocab)
-        df.to_csv(path, index=False)
-        return
-
     def vocab_size(self):
         return len(self.word_to_ix)
 
@@ -171,10 +118,13 @@ class DmTripletTrainDataset(data.Dataset):
 
 
 class DmTripletTestDataset(data.Dataset):
-    def __init__(self, dm_samples, max_len, word_dictionary, py_dictionary):
+    def __init__(self, dm_samples, max_len, dictionarys=None):
         self.max_len = max_len
-        self.word_to_ix = word_dictionary
-        self.py_word_to_ix = py_dictionary
+        if dictionarys is not None:
+            self.word_to_ix = dictionarys['vocab']
+            self.py_word_to_ix = dictionarys['pinyin']
+        else:
+            print('No dictionaries')
 
         print('building samples...')
         self.samples = []

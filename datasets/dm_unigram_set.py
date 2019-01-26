@@ -3,37 +3,15 @@
 
 import torch.utils.data as data
 import numpy as np
-import pandas as pd
-import collections
 
 
 class DmUnigramDataset(data.Dataset):
-    def __init__(self, dm_samples, min_count, max_len, dictionary=None):
+    def __init__(self, dm_samples, max_len, dictionary=None):
         self.max_len = max_len
         if dictionary is not None:
             self.word_to_ix = dictionary
         else:
             print('building vocabulary...')
-            aggregate_sample = []
-            for sample in dm_samples:
-                aggregate_sample.extend(sample['content'])
-            counter = {'UNK': 0}
-            counter.update(collections.Counter(aggregate_sample).most_common())
-            rare_words = set()
-            for word in counter:
-                if word != 'UNK' and counter[word] <= min_count:
-                    rare_words.add(word)
-            for word in rare_words:
-                counter['UNK'] += counter[word]
-                counter.pop(word)
-            print('%d words founded in vocabulary' % len(counter))
-
-            self.vocab_counter = counter
-            self.word_to_ix = {
-                'EPT': 0
-            }
-            for word in counter:
-                self.word_to_ix[word] = len(self.word_to_ix)
 
         print('building samples...')
         self.samples = []
@@ -69,16 +47,6 @@ class DmUnigramDataset(data.Dataset):
 
     def __len__(self):
         return len(self.samples)
-
-    def save_vocab(self, path):
-        vocab = []
-        for word in self.vocab_counter:
-            vocab.append({'idx': self.word_to_ix[word],
-                          'word': word,
-                          'count': self.vocab_counter[word]})
-        df = pd.DataFrame(vocab)
-        df.to_csv(path, index=False)
-        return
 
     def vocab_size(self):
         return len(self.word_to_ix)

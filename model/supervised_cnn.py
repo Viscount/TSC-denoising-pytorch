@@ -59,7 +59,7 @@ def train(season_id, dm_train_set, dm_test_set):
 
     optimizer = optim.Adam([
                 {'params': other_params},
-                {'params': model.dynamic_embedding.parameters(), 'lr': 1e-4}
+                {'params': model.dynamic_embedding.parameters(), 'lr': 1e-3}
             ], lr=1e-3, betas=(0.9, 0.99))
 
     logging = True
@@ -71,9 +71,11 @@ def train(season_id, dm_train_set, dm_test_set):
 
     for epoch in range(epoch_num):
 
-        # if (epoch+1) % 2 == 0:
-        #     for param_group in optimizer.param_groups:
-        #         param_group['lr'] = param_group['lr'] * 0.8
+        if epoch > 0:
+            for param_group in optimizer.param_groups:
+                param_group['lr'] = param_group['lr'] * 0.8
+
+        model.train(mode=True)
 
         for batch_idx, sample_dict in enumerate(dm_dataloader):
             sentence = Variable(torch.LongTensor(sample_dict['sentence']))
@@ -94,6 +96,7 @@ def train(season_id, dm_train_set, dm_test_set):
             loss.backward()
             optimizer.step()
 
+        model.eval()
         if logging:
             result_dict = valid_util.validate(model, dm_test_set, dm_test_dataloader, mode='report')
             writer.add_scalars(log_name + '_data/0-PRF', {
@@ -111,10 +114,11 @@ def train(season_id, dm_train_set, dm_test_set):
         if accuracy > max_acc:
             max_acc = accuracy
 
-        dm_valid_set = pickle.load(open(os.path.join('./tmp', season_id, 'unigram_valid_dataset.pkl'), 'rb'))
-        v_acc = valid_util.validate(model, dm_valid_set, mode='output')
-        if v_acc > max_v_acc:
-            max_v_acc = v_acc
+        # dm_valid_set = pickle.load(open(os.path.join('./tmp', season_id, 'unigram_valid_dataset.pkl'), 'rb'))
+        # v_acc = valid_util.validate(model, dm_valid_set, mode='output')
+        # if v_acc > max_v_acc:
+        #     max_v_acc = v_acc
+
     if logging:
         writer.close()
     print("Max Accuracy: %4.6f" % max_acc)

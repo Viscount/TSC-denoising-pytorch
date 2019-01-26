@@ -16,17 +16,6 @@ import util.strategy as stg
 from tensorboardX import SummaryWriter
 
 
-class Gate(nn.Module):
-    def __init__(self, num, input_size):
-        super(Gate, self).__init__()
-        self.w = nn.Parameter(torch.ones(num, input_size))
-
-    def forward(self, x):
-        w_ = F.softmax(self.w, dim=0)
-        out = torch.sum(x*w_, dim=1)
-        return out
-
-
 class E2ECNNModeler(nn.Module):
     def __init__(self, word_vocab_size, py_vocab_size, embedding_dim, feature_dim, window_sizes, max_len, fusion_type='concat'):
         super(E2ECNNModeler, self).__init__()
@@ -45,11 +34,7 @@ class E2ECNNModeler(nn.Module):
                               nn.MaxPool1d(kernel_size=max_len-h+1))
                 for h in window_sizes])
 
-        if fusion_type == 'gate':
-            self.feature_gate = Gate(3, feature_dim * len(window_sizes))
-            self.fc1 = nn.Linear(feature_dim * len(window_sizes), 256, bias=True)
-        else:
-            self.fc1 = nn.Linear(3 * feature_dim * len(window_sizes), 256, bias=True)
+        self.fc1 = nn.Linear(3 * feature_dim * len(window_sizes), 256, bias=True)
         self.fc2 = nn.Linear(256, 128, bias=True)
         self.fc3 = nn.Linear(128, 2, bias=True)
 
@@ -69,6 +54,7 @@ class E2ECNNModeler(nn.Module):
         if pre_train_weight.shape == self.py_embedding.weight.data.shape:
             pre_train_weight[1:] = np.random.uniform(-init_range, init_range, pre_train_weight.shape[1])
             pre_train_weight = torch.FloatTensor(pre_train_weight)
+            # self.py_embedding = nn.Embedding.from_pretrained(pre_train_weight, freeze=True)
             self.py_embedding.weight.data = pre_train_weight
         else:
             print('Weight data shape mismatch, using default init.')
@@ -90,16 +76,13 @@ class E2ECNNModeler(nn.Module):
         py_out = [conv(py_emd) for conv in self.convs]
         py_out = torch.cat(py_out, dim=1).squeeze()
 
-        if self.fusion_type == 'gate':
-            agg_out = torch.cat([out.unsqueeze(1), out_.unsqueeze(1), py_out.unsqueeze(1)], dim=1)
-            agg_out = self.feature_gate(agg_out)
-        else:
-            agg_out = torch.cat([out, out_, py_out], dim=1)
+        agg_out = torch.cat([out, out_, py_out], dim=1)
         return agg_out
 
     def forward(self, sentence, sent_py):
         sent_emd = self.embed(sentence, sent_py)
 
+        sent_emd = F.dropout(sent_emd, p=0.5, training=self.training)
         h1 = F.relu(self.fc1(sent_emd))
         h1 = F.dropout(h1, p=0.5, training=self.training)
         h2 = F.relu(self.fc2(h1))
@@ -169,12 +152,12 @@ def train(season_id, dm_train_set, dm_test_set):
 
     for epoch in range(epoch_num):
 
-        if epoch > 0:
+        model.train(mode=True)
+        if (epoch+1) % 5 == 0:
             for param_group in optimizer.param_groups:
-                param_group['lr'] = param_group['lr'] * 0.8
+                param_group['lr'] = param_group['lr'] * 0.5
 
         for batch_idx, sample_dict in enumerate(dm_dataloader):
-            model.train(mode=True)
             with autograd.detect_anomaly():
                 anchor = Variable(torch.LongTensor(sample_dict['anchor']))
                 pos = Variable(torch.LongTensor(sample_dict['pos']))
