@@ -2,7 +2,9 @@
 # -*- coding: utf-8 -*-
 
 from util.word_segment import word_segment
+from gensim.models.word2vec import Word2Vec
 from sklearn.model_selection import train_test_split
+import numpy as np
 import pandas as pd
 import pickle
 import collections
@@ -30,6 +32,13 @@ def build_vocab(words, min_count):
     for word in counter:
         word_to_ix[word] = len(word_to_ix)
     return word_to_ix
+
+
+def tokenize(word, dictionary):
+    if word in dictionary:
+        return dictionary[word]
+    else:
+        return dictionary['UNK']
 
 
 def dataset_split(danmaku_selected, season_id):
@@ -162,6 +171,34 @@ def build(season_id, samples, train_select, test_select, dataset_type):
                     unlabeled_samples.append(sample)
 
         return train_samples, test_samples, unlabeled_samples
+
+    if dataset_type == 'graph':
+        # get word features
+        word_model = Word2Vec.load(os.path.join('../tmp', season_id, 'dm_word_embedding.model'))
+        words_count = len(vocab_dictionary)
+        dim = 200
+        features = np.zeros((words_count, dim))
+        for word in vocab_dictionary:
+            idx = vocab_dictionary[word]
+            if word == 'UNK':
+                unk_id = idx
+            elif word in word_model.wv.vocab:
+                features[idx] = word_model.wv[word]
+            else:
+                continue
+        # build graph
+        adj = np.zeros((words_count, words_count), dtype=np.float32)
+        for episode_lvl_samples in samples:
+            for sample in episode_lvl_samples:
+                content = sample['content']
+                for index in range(1, len(content)):
+                    start = content[index-1]
+                    end = content[index]
+                    start_idx = tokenize(start, vocab_dictionary)
+                    end_idx = tokenize(end, vocab_dictionary)
+                    adj[start_idx][end_idx] = 1
+
+        return features, adj
 
 
 def dataset_label_fix(dataset, fix_file):

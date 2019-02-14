@@ -20,6 +20,7 @@ import model.e2eselfattention as e2e_sa
 import model.e2ernn as e2e_rnn
 import model.supervised_rnn as sup_rnn
 import model.supervised_cnn as sup_cnn
+import model.gcn as gcn
 
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
@@ -81,6 +82,15 @@ def preprocess(season_id):
     # pickle.dump(test_samples, open('./tmp/test_samples.pkl', 'wb'))
     # pickle.dump(unlabeled_samples, open('./tmp/unlabeled_samples.pkl', 'wb'))
 
+    dataset_type = 'graph'
+
+    features, adj = dataset.build(season_id, samples, train_select, test_select, dataset_type)
+
+    np.savetxt(os.path.join('./tmp', season_id, 'graph_features.txt'), features)
+    np.savetxt(os.path.join('./tmp', season_id, 'graph_features.txt'), adj)
+
+    return
+
 
 if __name__ == "__main__":
     # set random seed
@@ -89,7 +99,7 @@ if __name__ == "__main__":
     # preprocess(season_id)
 
     # load dataset
-    dataset_type = 'triplet'
+    dataset_type = 'unigram'
     train_set = pickle.load(open(os.path.join('./tmp/', season_id, dataset_type+'_train_dataset.pkl'), 'rb'))
     test_set = pickle.load(open(os.path.join('./tmp/', season_id, dataset_type+'_test_dataset.pkl'), 'rb'))
     print(type(train_set))
@@ -114,3 +124,9 @@ if __name__ == "__main__":
     # e2e_pycnn.train(season_id, train_set, test_set)
     # e2e_sa.train(train_set, test_set)
     # e2e_rnn.train(train_set, test_set)
+
+    # models that fed with graphs
+
+    features = np.loadtxt(os.path.join('./tmp', season_id, 'graph_features.txt'))
+    adj = np.loadtxt(os.path.join('./tmp', season_id, 'graph_adj.txt'))
+    gcn.train(season_id, train_set, test_set)
