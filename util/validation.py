@@ -7,8 +7,10 @@ import torch.utils.data as data
 from torch.autograd import Variable
 from sklearn.metrics import classification_report
 
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-def validate(model, dm_test_set, dataloader=None, mode='acc', py=False, pred_history=None):
+
+def validate(model, dm_test_set, dataloader=None, mode='acc', type='std', pred_history=None, **extra_input):
     if dataloader is None:
         dm_dataloader = data.DataLoader(
             dataset=dm_test_set,
@@ -23,14 +25,23 @@ def validate(model, dm_test_set, dataloader=None, mode='acc', py=False, pred_his
     pred_array = []
     label_array = []
     for batch_idx, sample_dict in enumerate(dm_dataloader):
-        sentence = Variable(torch.LongTensor(sample_dict['sentence']))
-        if torch.cuda.is_available():
-            sentence = sentence.cuda()
-        if py:
-            pinyin = Variable(torch.LongTensor(sample_dict['pinyin']))
-            if torch.cuda.is_available():
-                pinyin = pinyin.cuda()
+        sentence = torch.LongTensor(sample_dict['sentence'])
+        sentence = sentence.to(device)
+        if type == 'py':
+            pinyin = torch.LongTensor(sample_dict['pinyin'])
+            pinyin = pinyin.to(device)
             pred = model.forward(sentence, pinyin)
+        elif type == 'graph':
+            g = extra_input['g']
+            features = extra_input['features']
+            features = features.to(device)
+            pred = model(sentence, g, features)
+        elif type == 'context':
+            context = torch.LongTensor(sample_dict['context'])
+            context_count = sample_dict['context_count'].float()
+            context = context.to(device)
+            context_count = context_count.to(device)
+            pred = model.forward(sentence, context, context_count)
         else:
             pred = model.forward(sentence)
 

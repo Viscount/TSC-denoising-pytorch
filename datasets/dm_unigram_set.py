@@ -19,11 +19,13 @@ class DmUnigramDataset(data.Dataset):
         for sample in dm_samples:
             label = sample['label']
             sample_ = np.zeros(max_len, dtype=int)
+            word_mask = np.zeros(max_len, dtype=int)
             index = 0
             for word in sample['content']:
                 sample_[index] = self.word2ix(word)
+                word_mask[index] = 1
                 index += 1
-            self.samples.append((sample['raw_id'], np.array(sample_)))
+            self.samples.append((sample['raw_id'], sample_, word_mask))
             self.labels.append(label)
 
         print('%d samples constructed.' % len(self.samples))
@@ -41,6 +43,7 @@ class DmUnigramDataset(data.Dataset):
         sample_dict = {
             'raw_id': sample[0],
             'sentence': sample[1],
+            'word_mask': sample[2],
             'label': label
         }
         return sample_dict

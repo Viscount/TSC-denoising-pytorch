@@ -12,6 +12,7 @@ import os
 
 from datasets.dm_unigram_set import DmUnigramDataset
 from datasets.dm_triplet_set import DmTripletTrainDataset, DmTripletTestDataset
+from datasets.dm_unigram_context_set import DmUnigramContaxtDataset
 
 
 def build_vocab(words, min_count):
@@ -150,7 +151,23 @@ def build(season_id, samples, train_select, test_select, dataset_type):
                                              dictionarys={'vocab': vocab_dictionary, 'pinyin': py_dictionary})
         dm_test_set = DmTripletTestDataset(test_samples, max_len,
                                            dictionarys={'vocab': vocab_dictionary, 'pinyin': py_dictionary})
+        return dm_train_set, dm_test_set
 
+    if dataset_type == 'unigram_context':
+        context_size = 2.5
+        max_len = 0
+        context_words = 50
+
+        for episode_lvl_samples in samples:
+            episode_lvl_samples_ = []
+            for sample in episode_lvl_samples:
+                if len(sample['content']) > max_len:
+                    max_len = len(sample['content'])
+
+        dm_train_set = DmUnigramContaxtDataset(samples, train_select, max_len, context_size, context_words,
+                                               dictionarys={'vocab': vocab_dictionary})
+        dm_test_set = DmUnigramContaxtDataset(samples, test_select, max_len, context_size, context_words,
+                                               dictionarys={'vocab': vocab_dictionary})
         return dm_train_set, dm_test_set
 
     if dataset_type == 'seperate':
@@ -174,7 +191,7 @@ def build(season_id, samples, train_select, test_select, dataset_type):
 
     if dataset_type == 'graph':
         # get word features
-        word_model = Word2Vec.load(os.path.join('../tmp', season_id, 'dm_word_embedding.model'))
+        word_model = Word2Vec.load(os.path.join('./tmp', season_id, 'dm_word_embedding.model'))
         words_count = len(vocab_dictionary)
         dim = 200
         features = np.zeros((words_count, dim))
@@ -187,7 +204,7 @@ def build(season_id, samples, train_select, test_select, dataset_type):
             else:
                 continue
         # build graph
-        adj = np.zeros((words_count, words_count), dtype=np.float32)
+        edges = {}
         for episode_lvl_samples in samples:
             for sample in episode_lvl_samples:
                 content = sample['content']
@@ -196,9 +213,21 @@ def build(season_id, samples, train_select, test_select, dataset_type):
                     end = content[index]
                     start_idx = tokenize(start, vocab_dictionary)
                     end_idx = tokenize(end, vocab_dictionary)
-                    adj[start_idx][end_idx] = 1
-
-        return features, adj
+                    name = str(start_idx) + '->' + str(end_idx)
+                    if name in edges:
+                        edges[name]['value'] += 1
+                    else:
+                        edges[name] = {
+                            'start': start_idx,
+                            'end': end_idx,
+                            'value': 1
+                        }
+        edge_flat = []
+        for edge_name in edges:
+            edge = edges[edge_name]
+            edge_flat.append((edge['start'], edge['end'], edge['value']))
+        edges = np.array(edge_flat, dtype=np.int32)
+        return features, edges
 
 
 def dataset_label_fix(dataset, fix_file):
