@@ -2,8 +2,11 @@
 # -*- coding: utf-8 -*-
 
 import os
+import math
 import torch
 from torch import nn
+from torch.nn import init
+from torch.nn.parameter import Parameter
 import torch.nn.functional as F
 import pickle
 import numpy as np
@@ -16,11 +19,41 @@ from tensorboardX import SummaryWriter
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
+class WeightLayer(nn.Module):
+    def __init__(self, in_dim, bias=True):
+        super(WeightLayer, self).__init__()
+        self.weight = Parameter(torch.Tensor(in_dim))
+        if bias:
+            self.bias = Parameter(torch.Tensor(in_dim))
+        else:
+            self.bias = None
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        bound = 1 / self.weight.shape[0]
+        init.uniform_(self.weight, 0, bound)
+        if self.bias is not None:
+            bound = 1 / math.sqrt(self.weight.shape[0])
+            init.uniform_(self.bias, -bound, bound)
+
+    def forward(self, input):
+        weight = self.weight.unsqueeze(0)
+        weight = weight.unsqueeze(2)
+        if self.bias is not None:
+            bias = self.weight.unsqueeze(0)
+            bias = bias.unsqueeze(2)
+            return input * weight + bias
+        else:
+            return input * weight
+
+
 class EmbeddingContextModeler(nn.Module):
 
-    def __init__(self, vocab_size, embedding_dim):
+    def __init__(self, vocab_size, embedding_dim, context_words):
         super(EmbeddingContextModeler, self).__init__()
         self.embedding = nn.Embedding(vocab_size, embedding_dim, padding_idx=0)
+        # self.context_weight = Parameter(torch.Tensor(context_words))
+        self.context_fc = WeightLayer(context_words, bias=False)
         self.fc1 = nn.Linear(embedding_dim * 2, 256, bias=True)
         self.fc2 = nn.Linear(256, 128, bias=True)
         self.fc3 = nn.Linear(128, 2, bias=True)
@@ -35,14 +68,18 @@ class EmbeddingContextModeler(nn.Module):
             # self.embedding = nn.Embedding.from_pretrained(pre_train_weight, freeze=True)
         else:
             print('Weight data shape mismatch, using default init.')
+        # self.context_weight.data = torch.FloatTensor(np.random.uniform(0, init_range, 50))
         return
 
-    def forward(self, sentence, context, context_count):
+    def forward(self, sentence, context):
         sent_emd = self.embedding(sentence)
         sent_emd = torch.sum(sent_emd, dim=1)
         cont_emd = self.embedding(context)
-        context_count = (context_count / context_count.sum()).unsqueeze(2)
-        context_embed = torch.sum(cont_emd * context_count, dim=1)
+        # context_count = (context_count / context_count.sum()).unsqueeze(2)
+        # context_weight = self.context_weight.unsqueeze(0)
+        # context_weight = context_weight.unsqueeze(2)
+        context_weight = self.context_fc(cont_emd)
+        context_embed = torch.sum(context_weight, dim=1)
         emd = torch.cat([sent_emd, context_embed], dim=1).squeeze()
 
         emd = F.dropout(emd, p=0.5, training=self.training)
@@ -80,7 +117,7 @@ def train(season_id, dm_train_set, dm_test_set):
         num_workers=8
     )
 
-    model = EmbeddingContextModeler(dm_train_set.vocab_size(), EMBEDDING_DIM)
+    model = EmbeddingContextModeler(dm_train_set.vocab_size(), EMBEDDING_DIM, dm_train_set.context_words)
     print(model)
     init_weight = np.loadtxt(os.path.join('./tmp', season_id, 'unigram_weights.txt'))
     model.init_emb(init_weight)
@@ -91,16 +128,16 @@ def train(season_id, dm_train_set, dm_test_set):
     else:
         print("CUDA : Off")
     optimizer = optim.Adam(model.parameters(), lr=1e-3, betas=(0.9, 0.99))
-    scheduler = StepLR(optimizer, step_size=20, gamma=0.5)
+    # scheduler = StepLR(optimizer, step_size=10, gamma=0.8)
 
-    logging = True
+    logging = False
     if logging:
         log_name = 'straight_embed_context'
         writer = SummaryWriter()
 
     for epoch in range(epoch_num):
         model.train(mode=True)
-        scheduler.step()
+        # scheduler.step()
         for batch_idx, sample_dict in enumerate(dm_dataloader):
             sentence = torch.LongTensor(sample_dict['sentence'])
             label = torch.LongTensor(sample_dict['label'])
@@ -113,7 +150,7 @@ def train(season_id, dm_train_set, dm_test_set):
             context_count = context_count.to(device)
 
             optimizer.zero_grad()
-            pred = model.forward(sentence, context, context_count)
+            pred = model.forward(sentence, context)
             cross_entropy = nn.CrossEntropyLoss()
             loss = cross_entropy(pred, label)
             if batch_idx % 10 == 0:
@@ -146,7 +183,13 @@ def train(season_id, dm_train_set, dm_test_set):
                 'max_accuracy': max_acc
             }, epoch)
 
+        dm_valid_set = pickle.load(open(os.path.join('./tmp', season_id, 'unigram_context_valid_dataset.pkl'), 'rb'))
+        v_acc = valid_util.validate(model, dm_valid_set, mode='output', type='context')
+        if v_acc > max_v_acc:
+            max_v_acc = v_acc
+
     if logging:
         writer.close()
     print("Max Accuracy: %4.6f" % max_acc)
+    print("Max Validation Accuracy: %4.6f" % max_v_acc)
     return

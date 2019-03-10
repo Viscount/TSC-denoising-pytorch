@@ -73,8 +73,8 @@ def train(season_id, dm_train_set, dm_test_set):
 
     model = EmbeddingE2EModeler(dm_train_set.vocab_size(), EMBEDDING_DIM)
     print(model)
-    # init_weight = np.loadtxt(os.path.join('./tmp', season_id, 'unigram_weights.txt'))
-    # model.init_emb(init_weight)
+    init_weight = np.loadtxt(os.path.join('./tmp', season_id, 'unigram_weights.txt'))
+    model.init_emb(init_weight)
     if torch.cuda.is_available():
         print("CUDA : On")
         model.cuda()
@@ -82,7 +82,7 @@ def train(season_id, dm_train_set, dm_test_set):
         print("CUDA : Off")
     optimizer = optim.Adam(model.parameters(), lr=1e-3, betas=(0.9, 0.99))
 
-    logging = True
+    logging = False
     if logging:
         log_name = 'straight_embed'
         writer = SummaryWriter()
@@ -130,10 +130,10 @@ def train(season_id, dm_train_set, dm_test_set):
                 'max_accuracy': max_acc
             }, epoch)
 
-        # dm_valid_set = pickle.load(open(os.path.join('./tmp', season_id, 'unigram_valid_dataset.pkl'), 'rb'))
-        # v_acc = valid_util.validate(model, dm_valid_set, mode='output')
-        # if v_acc > max_v_acc:
-        #     max_v_acc = v_acc
+        dm_valid_set = pickle.load(open(os.path.join('./tmp', season_id, 'unigram_valid_dataset.pkl'), 'rb'))
+        v_acc = valid_util.validate(model, dm_valid_set, mode='output')
+        if v_acc > max_v_acc:
+            max_v_acc = v_acc
 
     if logging:
         writer.close()

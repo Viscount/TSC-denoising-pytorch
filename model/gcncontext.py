@@ -5,15 +5,11 @@ import math
 import torch
 import torch.utils.data as data
 import torch.nn.functional as F
+import dgl
 from torch import nn
 from torch.nn.modules.module import Module
 import torch.optim as optim
 from torch.optim.lr_scheduler import StepLR
-
-from torch_geometric.data import Data
-import torch_geometric.utils as gutil
-from torch_geometric.nn import GCNConv
-
 import util.validation as valid_util
 from tensorboardX import SummaryWriter
 from tqdm import tqdm
@@ -21,29 +17,59 @@ from tqdm import tqdm
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
-class GCN(Module):
-    def __init__(self, g, in_feats, hidden_size, dropout):
-        super(GCN, self).__init__()
-        self.graph = g
-        self.conv1 = GCNConv(in_feats, hidden_size)
-        self.conv2 = GCNConv(hidden_size, in_feats)
+def gcn_message(edges):
+    return {'msg': edges.src['h']}
+
+
+def gcn_reduce(nodes):
+    return {'h': torch.mean(nodes.mailbox['msg'], dim=1)}
+
+
+class GCNLayer(nn.Module):
+    def __init__(self, in_feats, out_feats):
+        super(GCNLayer, self).__init__()
+        self.linear = nn.Linear(in_feats, out_feats)
+
+    def forward(self, g, inputs):
+        # g is the graph and the inputs is the input node features
+        # first set the node features
+        g.ndata['h'] = inputs
+        # trigger message passing on all edges
+        g.send(g.edges(), gcn_message)
+        # trigger aggregation at all nodes
+        g.recv(g.nodes(), gcn_reduce)
+        # get the result node features
+        h = g.ndata.pop('h')
+        # perform linear transformation
+        return self.linear(h)
+
+
+class GCNContext(Module):
+    def __init__(self, in_feats, hidden_size, num_class, dropout):
+        super(GCNContext, self).__init__()
+
+        self.gc1 = GCNLayer(in_feats, hidden_size)
+        self.gc2 = GCNLayer(hidden_size, num_class)
         self.dropout = dropout
 
-        self.fc1 = nn.Linear(in_feats, 256, bias=True)
-        self.fc2 = nn.Linear(256, 128, bias=True)
-        self.fc3 = nn.Linear(128, 2, bias=True)
+        self.fc1 = nn.Linear(num_class * 2, 512, bias=True)
+        self.fc2 = nn.Linear(512, 256, bias=True)
+        self.fc3 = nn.Linear(256, 2, bias=True)
 
-    def forward(self, sentence):
-        x, edge_index = self.graph.x, self.graph.edge_index
-        x = F.relu(self.conv1(x, edge_index))
+    def forward(self, sentence, context, g, inputs):
+        x = F.relu(self.gc1(g, inputs))
         x = F.dropout(x, p=0.5, training=self.training)
-        x = self.conv2(x, edge_index)
+        x = self.gc2(g, x)
 
+        x[0] = torch.zeros(x[0].shape[0])
         sent_emd = x[sentence]
         sent_emd = torch.sum(sent_emd, dim=1)
+        cont_emd = x[context]
+        cont_emd = torch.sum(cont_emd, dim=1)
+        emd = torch.cat([sent_emd, cont_emd], dim=1).squeeze()
 
-        # sent_emd = F.dropout(sent_emd, p=0.5, training=self.training)
-        h1 = F.relu(self.fc1(sent_emd))
+        emd = F.dropout(emd, p=0.5, training=self.training)
+        h1 = F.relu(self.fc1(emd))
         h1 = F.dropout(h1, p=0.5, training=self.training)
         h2 = F.relu(self.fc2(h1))
         h2 = F.dropout(h2, p=0.5, training=self.training)
@@ -52,12 +78,14 @@ class GCN(Module):
 
 
 def build_graph(features, edges):
-    x = torch.FloatTensor(features)
+    g = dgl.DGLGraph()
+    g.add_nodes(features.shape[0])
     src, dst, value = tuple(zip(*edges))
-    edge_index = torch.tensor([src, dst], dtype=torch.long)
-    edge_index = gutil.to_undirected(edge_index, features.shape[0])
-    edge_index = gutil.add_self_loops(edge_index, features.shape[0])
-    g = Data(x=x, edge_index=edge_index)
+    g.add_edges(src, dst)
+    g.add_edges(dst, src)
+    for i in range(features.shape[0]):
+        g.add_edge(i, i)
+    g.ndata['feat'] = torch.FloatTensor(features)
     return g
 
 
@@ -65,10 +93,10 @@ def train(season_id, dm_train_set, dm_test_set, features, edges):
 
     EMBEDDING_DIM = 200
     batch_size = 128
-    epoch_num = 100
+    epoch_num = 300
     max_acc = 0
     max_v_acc = 0
-    model_save_path = './tmp/model_save/gcn.model'
+    model_save_path = './tmp/model_save/gcn_context.model'
 
     dm_dataloader = data.DataLoader(
         dataset=dm_train_set,
@@ -86,12 +114,7 @@ def train(season_id, dm_train_set, dm_test_set, features, edges):
         num_workers=8
     )
 
-    graph = build_graph(features, edges)
-    features = torch.FloatTensor(features)
-    features = features.to(device)
-    graph = graph.to(device)
-
-    model = GCN(graph, EMBEDDING_DIM, 256, dropout=0.5)
+    model = GCNContext(EMBEDDING_DIM, 256, 200, dropout=0.5)
     print(model)
     model.to(device)
 
@@ -103,23 +126,29 @@ def train(season_id, dm_train_set, dm_test_set, features, edges):
     optimizer = optim.Adam(model.parameters(), lr=1e-3, betas=(0.9, 0.99))
     # scheduler = StepLR(optimizer, step_size=100, gamma=0.1)
 
-    logging = False
+    logging = True
     if logging:
         writer = SummaryWriter()
-        log_name = 'gcn'
+        log_name = 'gcn_context'
+
+    graph = build_graph(features, edges)
+    features = torch.FloatTensor(features)
+    features = features.to(device)
 
     for epoch in tqdm(range(epoch_num)):
+        print()
         model.train(mode=True)
         # scheduler.step()
         for batch_idx, sample_dict in enumerate(dm_dataloader):
             sentence = torch.LongTensor(sample_dict['sentence'])
+            context = torch.LongTensor(sample_dict['context'])
             label = torch.LongTensor(sample_dict['label'])
 
             sentence = sentence.to(device)
             label = label.to(device)
 
             optimizer.zero_grad()
-            pred = model.forward(sentence)
+            pred = model(sentence, context, graph, features)
             cross_entropy = nn.CrossEntropyLoss()
             loss = cross_entropy(pred, label)
             if batch_idx % 10 == 0:
@@ -131,14 +160,14 @@ def train(season_id, dm_train_set, dm_test_set, features, edges):
             optimizer.step()
 
         model.eval()
-        accuracy = valid_util.validate(model, dm_test_set, dm_test_dataloader, mode='output', type='graph',
-                                       features=features)
+        accuracy = valid_util.validate(model, dm_test_set, dm_test_dataloader, mode='output', type='graph_context',
+                                       features=features, g=graph)
         if accuracy > max_acc:
             max_acc = accuracy
 
         if logging:
-            result_dict = valid_util.validate(model, dm_test_set, dm_test_dataloader, mode='report', type='graph',
-                                       features=features)
+            result_dict = valid_util.validate(model, dm_test_set, dm_test_dataloader, mode='report',
+                                              type='graph_context', features=features, g=graph)
             writer.add_scalars(log_name + '_data/0-PRF', {
                 '0-Precision': result_dict['0']['precision'],
                 '0-Recall': result_dict['0']['recall'],

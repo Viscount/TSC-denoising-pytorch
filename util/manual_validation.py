@@ -4,18 +4,16 @@
 import pandas as pd
 import csv
 import pickle
+import os
 import torch.utils.data as data
 from util.word_segment import word_segment
 from datasets.dm_unigram_set import DmUnigramDataset
-from datasets.dm_triplet_set import DmTripletTrainDataset, DmTripletTestDataset
+from datasets.dm_unigram_context_set import DmUnigramContaxtDataset
 
 
 def load_season_danmaku_data(file_name, season_id):
-    danmaku_complete = pd.read_csv(file_name, delimiter="\t", encoding="utf-8",
-                                   quoting=csv.QUOTE_NONE, low_memory=False)
-    danmaku_complete = danmaku_complete.fillna(-1)
-    danmaku_selected = danmaku_complete[danmaku_complete['season_id'] == season_id]
-    return danmaku_selected
+    samples = pickle.load(open('../tmp/' + season_id + '_samples.pkl', 'rb'))
+    return samples
 
 
 def load_validation_data(file_name):
@@ -26,28 +24,28 @@ def load_validation_data(file_name):
     return data_dict
 
 
-def build_valid_set(all_danmakus, select_dict, dataset_type):
-    samples = []
-    for index, row in all_danmakus.iterrows():
-        if row['tsc_raw_id'] in select_dict:
-            content = row['content']
-            words = word_segment(str(content))
-            pys = word_segment(str(content), mode='py')
-            sample = {
-                'raw_id': row['tsc_raw_id'],
-                'content': words,
-                'pinyin': pys,
-                'playback_time': row['playback_time'],
-                'label': select_dict[row['tsc_raw_id']]
-            }
-            samples.append(sample)
+def build_valid_set(all_danmakus, season_id, select_dict, dataset_type):
 
     if dataset_type == 'unigram':
-        train_set = pickle.load(open('../tmp/' + dataset_type + '_train_dataset.pkl', 'rb'))
-        valid_set = DmUnigramDataset(samples, 2, train_set.max_len, dictionary=train_set.word_to_ix)
-    elif dataset_type == 'triplet':
-        train_set = pickle.load(open('../tmp/' + dataset_type + '_train_dataset.pkl', 'rb'))
-        valid_set = DmTripletTestDataset(samples, train_set.max_len, train_set.word_to_ix, train_set.py_word_to_ix)
+        samples = []
+        for episode_lvl_samples in all_danmakus:
+            for sample in episode_lvl_samples:
+                if sample['raw_id'] in select_dict:
+                    sample['label'] = select_dict[sample['raw_id']]
+                    samples.append(sample)
+
+        train_set = pickle.load(open(os.path.join('../tmp/', season_id, dataset_type+'_train_dataset.pkl'), 'rb'))
+        valid_set = DmUnigramDataset(samples, train_set.max_len, dictionary=train_set.word_to_ix)
+
+    elif dataset_type == 'unigram_context':
+        for episode_lvl_samples in all_danmakus:
+            for sample in episode_lvl_samples:
+                if sample['raw_id'] in select_dict:
+                    sample['label'] = select_dict[sample['raw_id']]
+
+        train_set = pickle.load(open(os.path.join('../tmp/', season_id, dataset_type + '_train_dataset.pkl'), 'rb'))
+        valid_set = DmUnigramContaxtDataset(all_danmakus, select_dict.keys(), train_set.max_len, train_set.context_size,
+                                            train_set.context_words, dictionarys={'vocab': train_set.word_to_ix})
 
     return valid_set
 
@@ -110,12 +108,13 @@ def get_test_detail(dataframe, test_dataset, pred_history=None, history_len=0):
 
 
 if __name__ == '__main__':
-    danmaku_selected = load_season_danmaku_data("../data/danmaku_complete.csv", "24581")
+    season_id = '24581'
+    danmaku_selected = load_season_danmaku_data("../data/danmaku_complete.csv", season_id)
     valid_data_dict = load_validation_data("../data/manual_validation.csv")
-    dataset_type = 'unigram'
-    valid_dataset = build_valid_set(danmaku_selected, valid_data_dict, dataset_type)
+    dataset_type = 'unigram_context'
+    valid_dataset = build_valid_set(danmaku_selected, season_id, valid_data_dict, dataset_type)
     print(type(valid_dataset))
-    pickle.dump(valid_dataset, open('../tmp/' + dataset_type + '_valid_dataset.pkl', 'wb'))
+    pickle.dump(valid_dataset, open(os.path.join('../tmp/', season_id, dataset_type+'_valid_dataset.pkl'), 'wb'))
     # test_dataset = pickle.load(open('../tmp/e2e_pycnn_test_dataset.pkl', 'rb'))
     # we_pred_history = pickle.load(open('../tmp/e2e_we_history.pkl', 'rb'))
     # cnn_pred_history = pickle.load(open('../tmp/e2e_cnn_history.pkl', 'rb'))

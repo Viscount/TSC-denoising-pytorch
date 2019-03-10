@@ -15,7 +15,6 @@ class DmUnigramDataset(data.Dataset):
 
         print('building samples...')
         self.samples = []
-        self.labels = []
         for sample in dm_samples:
             label = sample['label']
             sample_ = np.zeros(max_len, dtype=int)
@@ -25,8 +24,13 @@ class DmUnigramDataset(data.Dataset):
                 sample_[index] = self.word2ix(word)
                 word_mask[index] = 1
                 index += 1
-            self.samples.append((sample['raw_id'], sample_, word_mask))
-            self.labels.append(label)
+            sample_dict = {
+                'raw_id': sample['raw_id'],
+                'sentence': sample_,
+                'word_mask': word_mask,
+                'label': label
+            }
+            self.samples.append(sample_dict)
 
         print('%d samples constructed.' % len(self.samples))
         return
@@ -38,15 +42,7 @@ class DmUnigramDataset(data.Dataset):
             return self.word_to_ix['UNK']
 
     def __getitem__(self, index):
-        sample = self.samples[index]
-        label = self.labels[index]
-        sample_dict = {
-            'raw_id': sample[0],
-            'sentence': sample[1],
-            'word_mask': sample[2],
-            'label': label
-        }
-        return sample_dict
+        return self.samples[index]
 
     def __len__(self):
         return len(self.samples)

@@ -23,6 +23,8 @@ import model.e2ernn as e2e_rnn
 import model.supervised_rnn as sup_rnn
 import model.supervised_cnn as sup_cnn
 import model.gcn as gcn
+import model.gcncontext as gcn_context
+import model.gat as gat
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
@@ -109,7 +111,7 @@ if __name__ == "__main__":
     # preprocess(season_id)
 
     # load dataset
-    dataset_type = 'unigram'
+    dataset_type = 'unigram_context'
     train_set = pickle.load(open(os.path.join('./tmp/', season_id, dataset_type+'_train_dataset.pkl'), 'rb'))
     test_set = pickle.load(open(os.path.join('./tmp/', season_id, dataset_type+'_test_dataset.pkl'), 'rb'))
     print(type(train_set))
@@ -142,3 +144,5 @@ if __name__ == "__main__":
     features = np.loadtxt(os.path.join('./tmp', season_id, 'graph_features.txt'))
     edges = np.loadtxt(os.path.join('./tmp', season_id, 'graph_edges.txt'))
     gcn.train(season_id, train_set, test_set, features, edges)
+    # gcn_context.train(season_id, train_set, test_set, features, edges)
+    # gat.train(season_id, train_set, test_set, features, edges)
