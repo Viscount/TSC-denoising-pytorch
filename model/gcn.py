@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import math
+import numpy as np
 import torch
 import torch.utils.data as data
 import torch.nn.functional as F
@@ -24,7 +25,9 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 class GCN(Module):
     def __init__(self, g, in_feats, hidden_size, dropout):
         super(GCN, self).__init__()
+        self.embedding_dim = in_feats
         self.graph = g
+        self.embedding = nn.Embedding(g.num_nodes, in_feats, padding_idx=0)
         self.conv1 = GCNConv(in_feats, hidden_size)
         self.conv2 = GCNConv(hidden_size, in_feats)
         self.dropout = dropout
@@ -34,6 +37,7 @@ class GCN(Module):
         self.fc3 = nn.Linear(128, 2, bias=True)
 
     def forward(self, sentence):
+        # self.graph.x = self.embedding.weight
         x, edge_index = self.graph.x, self.graph.edge_index
         x = F.relu(self.conv1(x, edge_index))
         x = F.dropout(x, p=0.5, training=self.training)
@@ -42,13 +46,22 @@ class GCN(Module):
         sent_emd = x[sentence]
         sent_emd = torch.sum(sent_emd, dim=1)
 
-        # sent_emd = F.dropout(sent_emd, p=0.5, training=self.training)
+        sent_emd = F.dropout(sent_emd, p=0.5, training=self.training)
         h1 = F.relu(self.fc1(sent_emd))
         h1 = F.dropout(h1, p=0.5, training=self.training)
         h2 = F.relu(self.fc2(h1))
         h2 = F.dropout(h2, p=0.5, training=self.training)
         h3 = self.fc3(h2)
         return h3
+
+    def init_emb(self, pre_train_weight):
+        init_range = 1 / self.embedding_dim
+        if pre_train_weight.shape == self.embedding.weight.data.shape:
+            pre_train_weight[1, :] = torch.FloatTensor(np.random.uniform(-init_range, init_range, pre_train_weight.shape[1]))
+            self.embedding.weight.data = pre_train_weight
+        else:
+            print('Weight data shape mismatch, using default init.')
+        return
 
 
 def build_graph(features, edges):
@@ -65,7 +78,7 @@ def train(season_id, dm_train_set, dm_test_set, features, edges):
 
     EMBEDDING_DIM = 200
     batch_size = 128
-    epoch_num = 100
+    epoch_num = 300
     max_acc = 0
     max_v_acc = 0
     model_save_path = './tmp/model_save/gcn.model'
@@ -88,10 +101,10 @@ def train(season_id, dm_train_set, dm_test_set, features, edges):
 
     graph = build_graph(features, edges)
     features = torch.FloatTensor(features)
-    features = features.to(device)
     graph = graph.to(device)
 
     model = GCN(graph, EMBEDDING_DIM, 256, dropout=0.5)
+    # model.init_emb(features)
     print(model)
     model.to(device)
 
@@ -131,14 +144,12 @@ def train(season_id, dm_train_set, dm_test_set, features, edges):
             optimizer.step()
 
         model.eval()
-        accuracy = valid_util.validate(model, dm_test_set, dm_test_dataloader, mode='output', type='graph',
-                                       features=features)
+        accuracy = valid_util.validate(model, dm_test_set, dm_test_dataloader, mode='output', type='normal')
         if accuracy > max_acc:
             max_acc = accuracy
 
         if logging:
-            result_dict = valid_util.validate(model, dm_test_set, dm_test_dataloader, mode='report', type='graph',
-                                       features=features)
+            result_dict = valid_util.validate(model, dm_test_set, dm_test_dataloader, mode='report', type='normal')
             writer.add_scalars(log_name + '_data/0-PRF', {
                 '0-Precision': result_dict['0']['precision'],
                 '0-Recall': result_dict['0']['recall'],

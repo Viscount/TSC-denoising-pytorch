@@ -32,19 +32,19 @@ def validate(model, dm_test_set, dataloader=None, mode='acc', type='std', pred_h
             pinyin = pinyin.to(device)
             pred = model.forward(sentence, pinyin)
         elif type == 'graph':
-            features = extra_input['features']
-            features = features.to(device)
-            pred = model(sentence)
+            graph = extra_input['g']
+            pred = model.forward(graph, sentence)
         elif type == 'context':
             context = torch.LongTensor(sample_dict['context'])
             context = context.to(device)
             pred = model.forward(sentence, context)
         elif type == 'graph_context':
-            g = extra_input['g']
-            features = extra_input['features']
-            features = features.to(device)
+            graph = extra_input['g']
+            distance = torch.LongTensor(sample_dict['distance'])
+            distance = distance.to(device)
             context = torch.LongTensor(sample_dict['context'])
-            pred = model(sentence, context, g, features)
+            context = context.to(device)
+            pred = model(graph, sentence, context, distance=distance)
         else:
             pred = model.forward(sentence)
 

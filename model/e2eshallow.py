@@ -27,7 +27,7 @@ class EmbeddingE2EModeler(nn.Module):
     def init_emb(self, pre_train_weight):
         init_range = 1 / self.embedding_dim
         if pre_train_weight.shape == self.embedding.weight.data.shape:
-            pre_train_weight[1:] = np.random.uniform(-init_range, init_range, pre_train_weight.shape[1])
+            pre_train_weight[1, :] = np.random.uniform(-init_range, init_range, pre_train_weight.shape[1])
             pre_train_weight = torch.FloatTensor(pre_train_weight)
             self.embedding.weight.data = pre_train_weight
             # self.embedding = nn.Embedding.from_pretrained(pre_train_weight, freeze=True)
@@ -73,8 +73,8 @@ def train(season_id, dm_train_set, dm_test_set):
 
     model = EmbeddingE2EModeler(dm_train_set.vocab_size(), EMBEDDING_DIM)
     print(model)
-    init_weight = np.loadtxt(os.path.join('./tmp', season_id, 'unigram_weights.txt'))
-    model.init_emb(init_weight)
+    # init_weight = np.loadtxt(os.path.join('./tmp', season_id, 'unigram_weights.txt'))
+    # model.init_emb(init_weight)
     if torch.cuda.is_available():
         print("CUDA : On")
         model.cuda()
@@ -130,13 +130,13 @@ def train(season_id, dm_train_set, dm_test_set):
                 'max_accuracy': max_acc
             }, epoch)
 
-        dm_valid_set = pickle.load(open(os.path.join('./tmp', season_id, 'unigram_valid_dataset.pkl'), 'rb'))
-        v_acc = valid_util.validate(model, dm_valid_set, mode='output')
-        if v_acc > max_v_acc:
-            max_v_acc = v_acc
+        # dm_valid_set = pickle.load(open(os.path.join('./tmp', season_id, 'unigram_valid_dataset.pkl'), 'rb'))
+        # v_acc = valid_util.validate(model, dm_valid_set, mode='output')
+        # if v_acc > max_v_acc:
+        #     max_v_acc = v_acc
 
     if logging:
         writer.close()
     print("Max Accuracy: %4.6f" % max_acc)
-    print("Max Validation Accuracy: %4.6f" % max_v_acc)
+    # print("Max Validation Accuracy: %4.6f" % max_v_acc)
     return

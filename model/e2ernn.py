@@ -32,7 +32,7 @@ class E2ERNNModeler(nn.Module):
     def init_emb(self, pre_train_weight):
         init_range = 1 / self.embedding_dim
         if pre_train_weight.shape == self.embedding.weight.data.shape:
-            pre_train_weight[1:] = np.random.uniform(-init_range, init_range, pre_train_weight.shape[1])
+            pre_train_weight[1, :] = np.random.uniform(-init_range, init_range, pre_train_weight.shape[1])
             pre_train_weight = torch.FloatTensor(pre_train_weight)
             self.embedding.weight.data = pre_train_weight
         return
