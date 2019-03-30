@@ -17,7 +17,7 @@ from torch.optim.lr_scheduler import StepLR
 
 from torch_geometric.data import Data
 import torch_geometric.utils as gutil
-from torch_geometric.nn import GCNConv
+from torch_geometric.nn import SAGEConv
 from torch_geometric.nn.conv import MessagePassing
 from torch_geometric.nn.inits import glorot, zeros
 
@@ -86,27 +86,34 @@ class SimpleGCNConv(MessagePassing):
 
 
 class GCNContext(Module):
-    def __init__(self, embedding_dim, hidden_size, context_mode='concat', cut_off=49):
+    def __init__(self, graph, embedding_dim, hidden_size, context_mode='concat', cut_off=49):
         super(GCNContext, self).__init__()
         self.context_mode = context_mode
+        self.graph = graph
+        self.embedding_dim = embedding_dim
+        self.embedding = nn.Embedding(graph.num_nodes, embedding_dim, padding_idx=0)
         self.pos_embedding = nn.Embedding(cut_off+1, embedding_dim)
-        self.rnn = nn.GRU(embedding_dim, 100, batch_first=True, bidirectional=True)
         self.context_fc = WeightLayer(50, bias=False)
-        self.conv1 = SimpleGCNConv(embedding_dim, hidden_size)
-        self.conv2 = SimpleGCNConv(hidden_size, embedding_dim)
+        # self.conv1 = SimpleGCNConv(embedding_dim, hidden_size)
+        # self.conv2 = SimpleGCNConv(hidden_size, embedding_dim)
+        self.conv1 = SAGEConv(embedding_dim, hidden_size)
+        self.conv2 = SAGEConv(hidden_size, embedding_dim)
+        self.bn = nn.BatchNorm1d(embedding_dim * 2, momentum=0.5)
 
         self.fc1 = nn.Linear(embedding_dim * 2, 512, bias=True)
         self.fc2 = nn.Linear(512, 2, bias=True)
 
-    def forward(self, graph, sentence, context, **extra_input):
-        x, edge_index = graph.x, graph.edge_index
+    def forward(self, sentence, context, **extra_input):
+        self.graph.x = self.embedding.weight
+        x, edge_index = self.graph.x, self.graph.edge_index
         x = F.relu(self.conv1(x, edge_index))
-        x = F.dropout(x, p=0.4, training=self.training)
+        x = F.dropout(x, p=0.5, training=self.training)
         x = self.conv2(x, edge_index)
+        x += self.embedding.weight
 
         sent_emd = x[sentence]
-        output, h_n = self.rnn(sent_emd)
-        sent_emd = output[:, -1, :]
+        sent_emd = torch.sum(sent_emd, dim=1)
+
         if self.context_mode == 'concat':
             cont_emd = x[context]
             cont_emd = torch.sum(cont_emd, dim=1)
@@ -121,12 +128,22 @@ class GCNContext(Module):
             cont_emd += pos_emd
             cont_emd = torch.sum(cont_emd, dim=1)
         emd = torch.cat([sent_emd, cont_emd], dim=1).squeeze()
+        emd = self.bn(emd)
 
-        emd = F.dropout(emd, p=0.4, training=self.training)
+        emd = F.dropout(emd, p=0.5, training=self.training)
         h1 = F.relu(self.fc1(emd))
-        h1 = F.dropout(h1, p=0.4, training=self.training)
+        h1 = F.dropout(h1, p=0.5, training=self.training)
         h2 = self.fc2(h1)
         return h2
+
+    def init_emb(self, pre_train_weight):
+        init_range = 1 / self.embedding_dim
+        if pre_train_weight.shape == self.embedding.weight.data.shape:
+            pre_train_weight[1, :] = torch.FloatTensor(np.random.uniform(-init_range, init_range, pre_train_weight.shape[1]))
+            self.embedding.weight.data = pre_train_weight
+        else:
+            print('Weight data shape mismatch, using default init.')
+        return
 
 
 def build_graph(features, edges):
@@ -169,20 +186,25 @@ def train(season_id, dm_train_set, dm_test_set, features, edges):
 
     EMBEDDING_DIM = 200
     batch_size = 128
-    epoch_num = 700
+    epoch_num = 300
     cut_off = 49
     max_acc = 0
     max_v_acc = 0
     model_save_path = './tmp/model_save/gcn_context.model'
 
     graph = build_graph(features, edges)
+    print(graph.num_nodes, graph.num_edges)
+    features = torch.FloatTensor(features)
     graph = graph.to(device)
+
+    # dm_valid_set = pickle.load(open(os.path.join('./tmp', season_id, 'unigram_context_valid_dataset.pkl'), 'rb'))
+    # dm_valid_set = enhance_dataset(graph, dm_valid_set, cut_off)
+    # pickle.dump(dm_valid_set, open(os.path.join('./tmp', season_id, 'unigram_context_valid_dataset.pkl'), 'wb'))
 
     # dm_train_set = enhance_dataset(graph, dm_train_set, cut_off)
     # dm_test_set = enhance_dataset(graph, dm_test_set, cut_off)
     # pickle.dump(dm_train_set, open(os.path.join('./tmp', season_id, 'unigram_context_train_dataset.pkl'), 'wb'))
     # pickle.dump(dm_test_set, open(os.path.join('./tmp', season_id, 'unigram_context_test_dataset.pkl'), 'wb'))
-
 
     dm_dataloader = data.DataLoader(
         dataset=dm_train_set,
@@ -200,7 +222,8 @@ def train(season_id, dm_train_set, dm_test_set, features, edges):
         num_workers=8
     )
 
-    model = GCNContext(EMBEDDING_DIM, 256, context_mode='distance', cut_off=cut_off)
+    model = GCNContext(graph, EMBEDDING_DIM, 256, context_mode='distance', cut_off=cut_off)
+    model.init_emb(features)
     print(model)
     model.to(device)
 
@@ -209,17 +232,17 @@ def train(season_id, dm_train_set, dm_test_set, features, edges):
     else:
         print("CUDA : Off")
 
-    optimizer = optim.Adam(model.parameters(), lr=1e-4, betas=(0.9, 0.99))
-    # scheduler = StepLR(optimizer, step_size=50, gamma=0.9)
+    optimizer = optim.Adam(model.parameters(), lr=1e-3, betas=(0.9, 0.99), weight_decay=1e-8)
+    scheduler = StepLR(optimizer, step_size=100, gamma=0.1)
 
-    logging = False
+    logging = True
     if logging:
         writer = SummaryWriter()
         log_name = 'gcn_context'
 
     for epoch in tqdm(range(epoch_num)):
         model.train(mode=True)
-        # scheduler.step()
+        scheduler.step()
         for batch_idx, sample_dict in enumerate(dm_dataloader):
             sentence = torch.LongTensor(sample_dict['sentence'])
             context = torch.LongTensor(sample_dict['context'])
@@ -232,7 +255,7 @@ def train(season_id, dm_train_set, dm_test_set, features, edges):
             distance = distance.to(device)
 
             optimizer.zero_grad()
-            pred = model.forward(graph, sentence, context, distance=distance)
+            pred = model.forward(sentence, context, distance=distance)
             cross_entropy = nn.CrossEntropyLoss()
             loss = cross_entropy(pred, label)
             if batch_idx % 10 == 0:
@@ -245,13 +268,13 @@ def train(season_id, dm_train_set, dm_test_set, features, edges):
 
         model.eval()
         accuracy = valid_util.validate(model, dm_test_set, dm_test_dataloader, mode='output',
-                                       type='graph_context', g=graph)
+                                       type='graph_context')
         if accuracy > max_acc:
             max_acc = accuracy
 
         if logging:
             result_dict = valid_util.validate(model, dm_test_set, dm_test_dataloader, mode='report',
-                                              type='graph_context', g=graph)
+                                              type='graph_context')
             writer.add_scalars(log_name + '_data/0-PRF', {
                 '0-Precision': result_dict['0']['precision'],
                 '0-Recall': result_dict['0']['recall'],
@@ -267,7 +290,12 @@ def train(season_id, dm_train_set, dm_test_set, features, edges):
                 'max_accuracy': max_acc
             }, epoch)
 
+        # v_acc = valid_util.validate(model, dm_valid_set, mode='output', type='graph_context')
+        # if v_acc > max_v_acc:
+        #     max_v_acc = v_acc
+
     if logging:
         writer.close()
     print("Max Accuracy: %4.6f" % max_acc)
+    # print("Max Validation Accuracy: %4.6f" % max_v_acc)
     return

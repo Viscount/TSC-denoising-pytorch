@@ -12,6 +12,7 @@ from torch.autograd import Variable
 import torch.optim as optim
 import util.validation as valid_util
 from tensorboardX import SummaryWriter
+from tqdm import tqdm
 
 
 class EmbeddingE2EModeler(nn.Module):
@@ -50,7 +51,7 @@ def train(season_id, dm_train_set, dm_test_set):
 
     EMBEDDING_DIM = 200
     batch_size = 128
-    epoch_num = 100
+    epoch_num = 300
     max_acc = 0
     max_v_acc = 0
     model_save_path = '.tmp/model_save/straight_embed.model'
@@ -87,7 +88,7 @@ def train(season_id, dm_train_set, dm_test_set):
         log_name = 'straight_embed'
         writer = SummaryWriter()
 
-    for epoch in range(epoch_num):
+    for epoch in tqdm(range(epoch_num)):
         model.train(mode=True)
         for batch_idx, sample_dict in enumerate(dm_dataloader):
             sentence = Variable(torch.LongTensor(sample_dict['sentence']))

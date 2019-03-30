@@ -204,23 +204,51 @@ def build(season_id, samples, train_select, test_select, dataset_type):
                 continue
         # build graph
         edges = {}
-        for episode_lvl_samples in samples:
-            for sample in episode_lvl_samples:
-                content = sample['content']
-                for index in range(1, len(content)):
-                    start = content[index-1]
-                    end = content[index]
-                    start_idx = tokenize(start, vocab_dictionary)
-                    end_idx = tokenize(end, vocab_dictionary)
-                    name = str(start_idx) + '->' + str(end_idx)
-                    if name in edges:
-                        edges[name]['value'] += 1
-                    else:
-                        edges[name] = {
-                            'start': start_idx,
-                            'end': end_idx,
-                            'value': 1
-                        }
+
+        # using danmaku build graph
+
+        # for episode_lvl_samples in samples:
+        #     for sample in episode_lvl_samples:
+        #         content = sample['content']
+        #         for index in range(1, len(content)):
+        #             start = content[index-1]
+        #             end = content[index]
+        #             start_idx = tokenize(start, vocab_dictionary)
+        #             end_idx = tokenize(end, vocab_dictionary)
+        #             name = str(start_idx) + '->' + str(end_idx)
+        #             if name in edges:
+        #                 edges[name]['value'] += 1
+        #             else:
+        #                 edges[name] = {
+        #                     'start': start_idx,
+        #                     'end': end_idx,
+        #                     'value': 1
+        #                 }
+
+        # using k-nn build graph
+
+        k = int(features.shape[0] * 1e-3)
+        for wid in range(features.shape[0]):
+            feature = features[wid]
+            dist = []
+            for wid_ in range(features.shape[0]):
+                feature_ = features[wid_]
+                distance = np.linalg.norm(feature - feature_)
+                dist.append((distance, wid_))
+            dist = sorted(dist)
+            for idx in range(k):
+                start_idx = wid
+                end_idx = dist[idx][1]
+                name = str(start_idx) + '->' + str(end_idx)
+                if name in edges:
+                    edges[name]['value'] += 1
+                else:
+                    edges[name] = {
+                        'start': start_idx,
+                        'end': end_idx,
+                        'value': 1
+                    }
+
         edge_flat = []
         for edge_name in edges:
             edge = edges[edge_name]

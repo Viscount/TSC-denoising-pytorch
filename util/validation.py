@@ -11,6 +11,7 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
 def validate(model, dm_test_set, dataloader=None, mode='acc', type='std', pred_history=None, **extra_input):
+    model.eval()
     if dataloader is None:
         dm_dataloader = data.DataLoader(
             dataset=dm_test_set,
@@ -39,12 +40,11 @@ def validate(model, dm_test_set, dataloader=None, mode='acc', type='std', pred_h
             context = context.to(device)
             pred = model.forward(sentence, context)
         elif type == 'graph_context':
-            graph = extra_input['g']
             distance = torch.LongTensor(sample_dict['distance'])
             distance = distance.to(device)
             context = torch.LongTensor(sample_dict['context'])
             context = context.to(device)
-            pred = model(graph, sentence, context, distance=distance)
+            pred = model(sentence, context, distance=distance)
         else:
             pred = model.forward(sentence)
 
